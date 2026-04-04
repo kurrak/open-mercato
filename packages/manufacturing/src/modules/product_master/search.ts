@@ -31,7 +31,7 @@ export const searchConfig: SearchModuleConfig = {
             badge: 'Production Method',
           },
           links: [
-            { href: `/backend/manufacturing/production-methods/${record.id}`, label: 'View', kind: 'primary' as const },
+            { href: `/backend/product_master?tab=production-methods&id=${record.id}`, label: 'View', kind: 'primary' as const },
           ],
           checksumSource: { record },
         }
@@ -47,7 +47,7 @@ export const searchConfig: SearchModuleConfig = {
         }
       },
 
-      resolveUrl: async (ctx) => `/backend/manufacturing/production-methods/${ctx.record.id}`,
+      resolveUrl: async (ctx) => `/backend/product_master?tab=production-methods&id=${ctx.record.id}`,
     },
 
     {
@@ -128,4 +128,5 @@ export const searchConfig: SearchModuleConfig = {
   ],
 }
 
+export const config = searchConfig
 export default searchConfig

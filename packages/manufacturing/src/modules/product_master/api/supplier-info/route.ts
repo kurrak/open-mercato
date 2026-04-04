@@ -3,6 +3,7 @@ import { makeCrudRoute } from '@open-mercato/shared/lib/crud/factory'
 import { resolveCrudRecordId, parseScopedCommandInput } from '@open-mercato/shared/lib/api/scoped'
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
 import { escapeLikePattern } from '@open-mercato/shared/lib/db/escapeLikePattern'
+import { parseBooleanToken } from '@open-mercato/shared/lib/boolean'
 import { SupplierInfo } from '../../data/entities'
 import { supplierInfoCreateSchema, supplierInfoUpdateSchema } from '../../data/validators'
 import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../openapi'
@@ -59,8 +60,8 @@ const crud = makeCrudRoute({
     buildFilters: async (query) => {
       const filters: Record<string, unknown> = {}
       if (query.productId) filters.product_id = { $eq: query.productId }
-      if (query.isPreferred === 'true') filters.is_preferred = { $eq: true }
-      if (query.isPreferred === 'false') filters.is_preferred = { $eq: false }
+      const preferredToken = parseBooleanToken(query.isPreferred)
+      if (preferredToken !== undefined) filters.is_preferred = { $eq: preferredToken }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
         const ids = query.ids.split(',').map((v: string) => v.trim()).filter((v: string) => v.length > 0)
         if (ids.length > 0) filters.id = { $in: ids }

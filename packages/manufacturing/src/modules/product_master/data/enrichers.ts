@@ -1,4 +1,5 @@
 import type { ResponseEnricher, EnricherContext } from '@open-mercato/shared/lib/crud/response-enricher'
+import type { Knex } from 'knex'
 
 type ProductRecord = Record<string, unknown> & { id: string }
 
@@ -10,8 +11,14 @@ type ManufacturingSummary = {
   has_suppliers: boolean
 }
 
-function getKnex(em: unknown): unknown {
-  return (em as Record<string, unknown> & { getConnection: () => { getKnex: () => unknown } }).getConnection().getKnex()
+type DiContainer = { resolve: (name: string) => unknown }
+type EmWithKnex = { getConnection: () => { getKnex: () => Knex } }
+
+function resolveKnex(context: EnricherContext): Knex | null {
+  const container = context.container as DiContainer | undefined
+  const em = container?.resolve?.('em') as EmWithKnex | undefined
+  if (!em?.getConnection) return null
+  return em.getConnection().getKnex()
 }
 
 const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
@@ -24,14 +31,13 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
   critical: false,
 
   async enrichOne(record: ProductRecord, context: EnricherContext): Promise<ProductRecord> {
-    const em = context.container?.resolve?.('em')
-    if (!em) return { ...record, _manufacturing: null }
+    const knex = resolveKnex(context)
+    if (!knex) return { ...record, _manufacturing: null }
 
-    const knex = getKnex(em)
     const orgId = context.organizationId ?? record.organization_id
     const tenId = context.tenantId ?? record.tenant_id
 
-    const ext = await (knex as any)('product_manufacturing_extensions')
+    const ext = await knex('product_manufacturing_extensions')
       .select('configuration_type', 'procurement_type', 'base_uom_id')
       .where({ product_id: record.id, organization_id: orgId, tenant_id: tenId })
       .whereNull('deleted_at')
@@ -52,7 +58,7 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
 
     let baseUomCode: string | null = null
     if (ext.base_uom_id) {
-      const uom = await (knex as any)('manufacturing_units_of_measure')
+      const uom = await knex('manufacturing_units_of_measure')
         .select('code')
         .where({ id: ext.base_uom_id })
         .whereNull('deleted_at')
@@ -60,12 +66,12 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
       baseUomCode = uom?.code ?? null
     }
 
-    const [{ count: pmCount }] = await (knex as any)('manufacturing_production_methods')
+    const [{ count: pmCount }] = await knex('manufacturing_production_methods')
       .count('* as count')
       .where({ product_id: record.id, organization_id: orgId, tenant_id: tenId })
       .whereNull('deleted_at')
 
-    const [{ count: siCount }] = await (knex as any)('manufacturing_supplier_infos')
+    const [{ count: siCount }] = await knex('manufacturing_supplier_infos')
       .count('* as count')
       .where({ product_id: record.id, organization_id: orgId, tenant_id: tenId })
       .whereNull('deleted_at')
@@ -83,15 +89,14 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
   },
 
   async enrichMany(records: ProductRecord[], context: EnricherContext): Promise<ProductRecord[]> {
-    const em = context.container?.resolve?.('em')
-    if (!em || records.length === 0) return records
+    const knex = resolveKnex(context)
+    if (!knex || records.length === 0) return records
 
-    const knex = getKnex(em)
     const productIds = records.map((r) => r.id)
     const orgId = context.organizationId ?? (records[0]?.organization_id as string)
     const tenId = context.tenantId ?? (records[0]?.tenant_id as string)
 
-    const extensions: Array<Record<string, unknown>> = await (knex as any)('product_manufacturing_extensions')
+    const extensions: Array<Record<string, unknown>> = await knex('product_manufacturing_extensions')
       .select('product_id', 'configuration_type', 'procurement_type', 'base_uom_id')
       .whereIn('product_id', productIds)
       .where({ organization_id: orgId, tenant_id: tenId })
@@ -106,14 +111,14 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
 
     const uomCodeMap = new Map<string, string>()
     if (uomIds.size > 0) {
-      const uoms: Array<{ id: string; code: string }> = await (knex as any)('manufacturing_units_of_measure')
+      const uoms: Array<{ id: string; code: string }> = await knex('manufacturing_units_of_measure')
         .select('id', 'code')
         .whereIn('id', [...uomIds])
         .whereNull('deleted_at')
       for (const uom of uoms) uomCodeMap.set(uom.id, uom.code)
     }
 
-    const pmCounts: Array<{ product_id: string; count: string }> = await (knex as any)('manufacturing_production_methods')
+    const pmCounts: Array<{ product_id: string; count: string }> = await knex('manufacturing_production_methods')
       .select('product_id')
       .count('* as count')
       .whereIn('product_id', productIds)
@@ -124,7 +129,7 @@ const manufacturingEnricher: ResponseEnricher<ProductRecord> = {
     const pmCountMap = new Map<string, number>()
     for (const row of pmCounts) pmCountMap.set(row.product_id, Number(row.count))
 
-    const siCounts: Array<{ product_id: string; count: string }> = await (knex as any)('manufacturing_supplier_infos')
+    const siCounts: Array<{ product_id: string; count: string }> = await knex('manufacturing_supplier_infos')
       .select('product_id')
       .count('* as count')
       .whereIn('product_id', productIds)

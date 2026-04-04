@@ -3,6 +3,7 @@ import { makeCrudRoute } from '@open-mercato/shared/lib/crud/factory'
 import { resolveCrudRecordId, parseScopedCommandInput } from '@open-mercato/shared/lib/api/scoped'
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
 import { escapeLikePattern } from '@open-mercato/shared/lib/db/escapeLikePattern'
+import { parseBooleanToken } from '@open-mercato/shared/lib/boolean'
 import { UnitOfMeasure } from '../../data/entities'
 import { unitOfMeasureCreateSchema, unitOfMeasureUpdateSchema } from '../../data/validators'
 import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../openapi'
@@ -56,8 +57,8 @@ const crud = makeCrudRoute({
     buildFilters: async (query) => {
       const filters: Record<string, unknown> = {}
       if (query.uomType) filters.uom_type = { $eq: query.uomType }
-      if (query.isActive === 'true') filters.is_active = { $eq: true }
-      if (query.isActive === 'false') filters.is_active = { $eq: false }
+      const activeToken = parseBooleanToken(query.isActive)
+      if (activeToken !== undefined) filters.is_active = { $eq: activeToken }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
         const ids = query.ids.split(',').map((v: string) => v.trim()).filter((v: string) => v.length > 0)
         if (ids.length > 0) filters.id = { $in: ids }

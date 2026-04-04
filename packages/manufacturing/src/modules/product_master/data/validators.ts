@@ -2,6 +2,16 @@ import { z } from 'zod'
 
 const uuid = () => z.string().uuid()
 
+const numericString = () =>
+  z.string().refine((v) => !isNaN(Number(v)) && v.trim().length > 0, {
+    message: 'Must be a numeric value',
+  })
+
+const positiveNumericString = () =>
+  z.string().refine((v) => { const n = Number(v); return !isNaN(n) && n > 0 && isFinite(n) }, {
+    message: 'Must be a positive numeric value',
+  })
+
 const scopedSchema = z.object({
   organizationId: uuid(),
   tenantId: uuid(),
@@ -100,10 +110,10 @@ export const supplierInfoCreateSchema = scopedSchema.extend({
   supplierName: z.string().trim().min(1).max(255),
   supplierId: uuid().nullable().optional(),
   supplierSku: z.string().trim().max(100).nullable().optional(),
-  price: z.string().nullable().optional(),
+  price: numericString().nullable().optional(),
   currency: z.string().trim().length(3).nullable().optional(),
-  minQty: z.string().nullable().optional(),
-  orderMultiple: z.string().nullable().optional(),
+  minQty: numericString().nullable().optional(),
+  orderMultiple: numericString().nullable().optional(),
   leadTimeDays: z.number().int().min(0).nullable().optional(),
   isPreferred: z.boolean().optional(),
   validFrom: z.coerce.date().nullable().optional(),
@@ -118,10 +128,10 @@ export const supplierInfoUpdateSchema = z.object({ id: uuid() }).merge(
       supplierName: z.string().trim().min(1).max(255),
       supplierId: uuid().nullable(),
       supplierSku: z.string().trim().max(100).nullable(),
-      price: z.string().nullable(),
+      price: numericString().nullable(),
       currency: z.string().trim().length(3).nullable(),
-      minQty: z.string().nullable(),
-      orderMultiple: z.string().nullable(),
+      minQty: numericString().nullable(),
+      orderMultiple: numericString().nullable(),
       leadTimeDays: z.number().int().min(0).nullable(),
       isPreferred: z.boolean(),
       validFrom: z.coerce.date().nullable(),
@@ -143,7 +153,7 @@ export const uomConversionCreateSchema = scopedSchema.extend({
   productId: uuid(),
   fromUomId: uuid(),
   toUomId: uuid(),
-  factor: z.string().min(1),
+  factor: positiveNumericString(),
 })
 
 export const uomConversionUpdateSchema = z.object({ id: uuid() }).merge(

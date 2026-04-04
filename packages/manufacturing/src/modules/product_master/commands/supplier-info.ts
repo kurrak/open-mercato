@@ -173,7 +173,7 @@ const updateSiCommand: CommandHandler<SupplierInfoUpdateInput, { supplierInfoId:
     }
 
     for (const [key, change] of Object.entries(changes)) {
-      ;(record as Record<string, unknown>)[key] = change.to
+      ;(record as unknown as Record<string, unknown>)[key] = change.to
     }
     record.updatedAt = new Date()
     await em.flush()
@@ -298,6 +298,6 @@ const deleteSiCommand: CommandHandler<{ id: string }, { supplierInfoId: string }
   },
 }
 
-registerCommand('product_master.supplierInfo.create', createSiCommand)
-registerCommand('product_master.supplierInfo.update', updateSiCommand)
-registerCommand('product_master.supplierInfo.delete', deleteSiCommand)
+registerCommand(createSiCommand)
+registerCommand(updateSiCommand)
+registerCommand(deleteSiCommand)

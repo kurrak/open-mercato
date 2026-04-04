@@ -198,7 +198,7 @@ const updatePMCommand: CommandHandler<ProductionMethodUpdateInput, { productionM
     }
 
     for (const [key, change] of Object.entries(changes)) {
-      ;(record as Record<string, unknown>)[key] = change.to
+      ;(record as unknown as Record<string, unknown>)[key] = change.to
     }
     record.updatedAt = new Date()
     await em.flush()
@@ -319,6 +319,6 @@ const deletePMCommand: CommandHandler<{ id: string }, { productionMethodId: stri
   },
 }
 
-registerCommand('product_master.productionMethod.create', createPMCommand)
-registerCommand('product_master.productionMethod.update', updatePMCommand)
-registerCommand('product_master.productionMethod.delete', deletePMCommand)
+registerCommand(createPMCommand)
+registerCommand(updatePMCommand)
+registerCommand(deletePMCommand)

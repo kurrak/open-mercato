@@ -12,3 +12,5 @@ export const injectionTable = [
     widgets: [],
   },
 ]
+
+export default injectionTable

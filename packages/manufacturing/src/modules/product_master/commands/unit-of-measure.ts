@@ -151,7 +151,7 @@ const updateUomCommand: CommandHandler<UnitOfMeasureUpdateInput, { unitOfMeasure
     }
 
     for (const [key, change] of Object.entries(changes)) {
-      ;(record as Record<string, unknown>)[key] = change.to
+      ;(record as unknown as Record<string, unknown>)[key] = change.to
     }
     record.updatedAt = new Date()
     await em.flush()
@@ -267,6 +267,6 @@ const deleteUomCommand: CommandHandler<{ id: string }, { unitOfMeasureId: string
   },
 }
 
-registerCommand('product_master.unitOfMeasure.create', createUomCommand)
-registerCommand('product_master.unitOfMeasure.update', updateUomCommand)
-registerCommand('product_master.unitOfMeasure.delete', deleteUomCommand)
+registerCommand(createUomCommand)
+registerCommand(updateUomCommand)
+registerCommand(deleteUomCommand)

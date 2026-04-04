@@ -273,6 +273,6 @@ const deleteUCCommand: CommandHandler<{ id: string }, { uomConversionId: string 
   },
 }
 
-registerCommand('product_master.uomConversion.create', createUCCommand)
-registerCommand('product_master.uomConversion.update', updateUCCommand)
-registerCommand('product_master.uomConversion.delete', deleteUCCommand)
+registerCommand(createUCCommand)
+registerCommand(updateUCCommand)
+registerCommand(deleteUCCommand)
