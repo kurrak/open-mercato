@@ -40,6 +40,17 @@ const addJsExtension = {
           }
         )
         content = content.replace(
+          /import\s+["'](\.[^"']+)["']/g,
+          (match, path) => {
+            if (path.endsWith('.js') || path.endsWith('.json')) return match
+            const resolvedPath = join(fileDir, path)
+            if (existsSync(resolvedPath) && existsSync(join(resolvedPath, 'index.js'))) {
+              return `import "${path}/index.js"`
+            }
+            return `import "${path}.js"`
+          }
+        )
+        content = content.replace(
           /import\s*\(\s*["'](\.[^"']+)["']\s*\)/g,
           (match, path) => {
             if (path.endsWith('.js') || path.endsWith('.json')) return match
