@@ -1,3 +1,7 @@
+import './commands/production-methods'
+import './commands/unit-of-measure'
+import './commands/supplier-info'
+import './commands/uom-conversion'
 import type { ModuleInfo } from '@open-mercato/shared/modules/registry'
 
 export const metadata: ModuleInfo = {
