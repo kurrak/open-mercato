@@ -457,9 +457,29 @@ defaultRoleFeatures: {
 
 **Fully compliant** — ready for implementation.
 
+## Implementation Status
+
+| Phase | Status | Date | Notes |
+|-------|--------|------|-------|
+| Phase A — Package Scaffold | Done | 2026-04-04 | Package structure, 5 entities, validators, ACL, events, setup, search, translations, extensions, DI |
+| Phase B — CRUD APIs + Subscribers | Done | 2026-04-04 | 4 CRUD routes with makeCrudRoute + OpenAPI, 12 commands with undo, product deletion subscriber |
+| Phase C — Extension + Enricher + Widgets | Done | 2026-04-04 | Manufacturing summary enricher on catalog.product, widget injection spots, dashboard page |
+| Phase D — Tests | Done | 2026-04-04 | 57 unit tests (validators, module structure, entity defaults, UoM conversion math). Build passes |
+
+### Reusable Utilities
+
+| Utility | Path | Used By |
+|---------|------|---------|
+| `convertQuantity(qty, fromUomId, toUomId, conversions)` | `lib/uom-conversion.ts` | BOM explosion (sub-spec b), MRP (future) |
+| `isValidConversionFactor(factor)` | `lib/uom-conversion.ts` | UomConversion CRUD validation |
+| `reverseConversionFactor(factor)` | `lib/uom-conversion.ts` | Bidirectional conversion without requiring both directions stored |
+
 ---
 
 ## Changelog
+
+### 2026-04-04
+- Implementation complete. All 4 phases done. 57 unit tests. Added `lib/uom-conversion.ts` pure utility for quantity conversion (direct + reverse lookup, factor validation). Fixed Zod v4 `z.record(z.unknown())` incompatibility → `z.record(z.string(), z.unknown())`
 
 ### 2026-04-03
 - Initial sub-spec. 5 entities (ProductManufacturingExtension, ProductionMethod, UnitOfMeasure, SupplierInfo, UomConversion). 4-phase implementation plan. Based on actual OM patterns (EntityExtension type, ResponseEnricher interface, makeCrudRoute, createModuleEvents, ModuleSetupConfig)
