@@ -51,6 +51,7 @@ export const enabledModules: ModuleEntry[] = [
   { id: 'portal', from: '@open-mercato/core' },
   { id: 'example', from: '@app' },
   { id: 'product_master', from: '@open-mercato/manufacturing' },
+  { id: 'bom', from: '@open-mercato/manufacturing' },
 ]
 
 const enterpriseModulesEnabled = parseBooleanWithDefault(process.env.OM_ENABLE_ENTERPRISE_MODULES, false)
