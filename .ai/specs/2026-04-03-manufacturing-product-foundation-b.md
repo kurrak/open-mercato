@@ -462,6 +462,14 @@ defaultRoleFeatures: {
 
 **Fully compliant** — ready for implementation.
 
+## Implementation Status
+
+| Phase | Status | Date | Notes |
+|-------|--------|------|-------|
+| Phase A — Entities + CRUD | Done | 2026-04-04 | 3 entities, 9 commands, 3 CRUD routes, where-used endpoint, cycle detection, migration |
+| Phase B — Explosion + Worker | Done | 2026-04-04 | Pure explosion algorithm, async queue worker with ProgressService, explode endpoint |
+| Phase C — Widget + Tests | Done | 2026-04-04 | BOM tab placeholder, 44 new tests (explosion: 16, validators: 12, cycle detection: 6, variant matching: 8, + product_master: 57). Total: 101 tests |
+
 ---
 
 ## Changelog
