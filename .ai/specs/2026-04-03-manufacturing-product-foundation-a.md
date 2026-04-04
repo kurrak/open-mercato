@@ -227,6 +227,8 @@ Per-product unit conversion factors. Handles purchase UoM ≠ production UoM ≠
 
 All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `openApi` export.
 
+**Route prefix convention:** OM auto-discovery maps `api/<path>/route.ts` → `/api/<path>`. To achieve the `/api/manufacturing/` prefix, all route files are nested under `api/manufacturing/` (e.g., `api/manufacturing/production-method/route.ts` → `/api/manufacturing/production-method`). This convention applies to all modules in `packages/manufacturing`.
+
 ### Production Method
 
 - `GET /api/manufacturing/production-method` — List (filtered by product_id, lifecycle_state)
