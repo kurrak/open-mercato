@@ -6,6 +6,7 @@ import type { ProgressService, ProgressServiceContext } from '@open-mercato/core
 import { BOM_EXPLODE_QUEUE, type BomExplodeJobPayload } from '../lib/queue'
 import { BomHeader, BomLine, BomLineVariant } from '../data/entities'
 import { explodeBom, type BomDataLoader } from '../lib/bom-explosion'
+import { emitBomEvent } from '../events'
 
 export const metadata: WorkerMeta = {
   queue: BOM_EXPLODE_QUEUE,
@@ -114,6 +115,15 @@ export default async function handle(
       },
       progressCtx,
     )
+
+    await emitBomEvent('manufacturing.bom.exploded', {
+      bomHeaderId,
+      lineCount: result.lines.length,
+      depth: result.depth,
+      warningCount: result.warnings.length,
+      organizationId: scope.organizationId,
+      tenantId: scope.tenantId,
+    })
   } catch (error) {
     await progressService.failJob(
       progressJobId,

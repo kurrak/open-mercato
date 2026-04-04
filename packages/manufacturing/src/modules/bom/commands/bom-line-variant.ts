@@ -44,7 +44,7 @@ function snapshotBLV(record: BomLineVariant): BLVSnapshot {
 }
 
 const createBLVCommand: CommandHandler<BomLineVariantCreateInput, { bomLineVariantId: string }> = {
-  id: 'bom.bomLineVariant.create',
+  id: 'bom.bom_line_variant.create',
   async execute(input, ctx) {
     const parsed = bomLineVariantCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
@@ -111,7 +111,7 @@ const createBLVCommand: CommandHandler<BomLineVariantCreateInput, { bomLineVaria
 }
 
 const updateBLVCommand: CommandHandler<BomLineVariantUpdateInput, { bomLineVariantId: string }> = {
-  id: 'bom.bomLineVariant.update',
+  id: 'bom.bom_line_variant.update',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM line variant ID is required')
     const em = ctx.container.resolve('em') as EntityManager
@@ -201,7 +201,7 @@ const updateBLVCommand: CommandHandler<BomLineVariantUpdateInput, { bomLineVaria
 }
 
 const deleteBLVCommand: CommandHandler<{ id: string }, { bomLineVariantId: string }> = {
-  id: 'bom.bomLineVariant.delete',
+  id: 'bom.bom_line_variant.delete',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM line variant ID is required')
     const em = ctx.container.resolve('em') as EntityManager

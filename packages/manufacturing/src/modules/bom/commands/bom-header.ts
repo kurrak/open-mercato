@@ -58,7 +58,7 @@ function snapshotBomHeader(record: BomHeader): BomHeaderSnapshot {
 }
 
 const createBomHeaderCommand: CommandHandler<BomHeaderCreateInput, { bomHeaderId: string }> = {
-  id: 'bom.bomHeader.create',
+  id: 'bom.bom_header.create',
   async execute(input, ctx) {
     const parsed = bomHeaderCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
@@ -124,7 +124,7 @@ const createBomHeaderCommand: CommandHandler<BomHeaderCreateInput, { bomHeaderId
 }
 
 const updateBomHeaderCommand: CommandHandler<BomHeaderUpdateInput, { bomHeaderId: string }> = {
-  id: 'bom.bomHeader.update',
+  id: 'bom.bom_header.update',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM header ID is required')
     const em = ctx.container.resolve('em') as EntityManager
@@ -215,7 +215,7 @@ const updateBomHeaderCommand: CommandHandler<BomHeaderUpdateInput, { bomHeaderId
 }
 
 const deleteBomHeaderCommand: CommandHandler<{ id: string }, { bomHeaderId: string }> = {
-  id: 'bom.bomHeader.delete',
+  id: 'bom.bom_header.delete',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM header ID is required')
     const em = ctx.container.resolve('em') as EntityManager

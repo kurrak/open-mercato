@@ -142,10 +142,10 @@ export class BomLine {
   @Property({ name: 'sort_order', type: 'integer', default: 0 })
   sortOrder: number = 0
 
-  @Property({ name: 'valid_from', type: Date, nullable: true })
+  @Property({ name: 'valid_from', type: 'date', nullable: true })
   validFrom?: Date | null
 
-  @Property({ name: 'valid_to', type: Date, nullable: true })
+  @Property({ name: 'valid_to', type: 'date', nullable: true })
   validTo?: Date | null
 
   @Property({ name: 'is_consumable', type: 'boolean', default: false })

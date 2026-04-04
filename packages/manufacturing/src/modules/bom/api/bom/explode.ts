@@ -4,6 +4,7 @@ import { createRequestContainer } from '@open-mercato/shared/lib/di/container'
 import { getAuthFromRequest } from '@open-mercato/shared/lib/auth/server'
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
 import { CrudHttpError } from '@open-mercato/shared/lib/crud/errors'
+import { readJsonSafe } from '@open-mercato/shared/lib/http/readJsonSafe'
 import type { ProgressService } from '@open-mercato/core/modules/progress/lib/progressService'
 import { bomExplosionInputSchema } from '../../data/validators'
 import { getBomQueue, BOM_EXPLODE_QUEUE, type BomExplodeJobPayload } from '../../lib/queue'
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
       throw new CrudHttpError(400, { error: translate('bom.errors.organization_required', 'Organization context is required') })
     }
 
-    const body = await req.json().catch(() => ({}))
+    const body = await readJsonSafe<Record<string, unknown>>(req, {})
     const parsed = bomExplosionInputSchema.parse({
       ...body,
       organizationId,

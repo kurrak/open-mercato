@@ -76,7 +76,7 @@ const crud = makeCrudRoute({
   },
   actions: {
     create: {
-      commandId: 'bom.bomHeader.create',
+      commandId: 'bom.bom_header.create',
       schema: rawBodySchema,
       mapInput: async ({ raw, ctx }) => {
         const { translate } = await resolveTranslations()
@@ -86,7 +86,7 @@ const crud = makeCrudRoute({
       status: 201,
     },
     update: {
-      commandId: 'bom.bomHeader.update',
+      commandId: 'bom.bom_header.update',
       schema: rawBodySchema,
       mapInput: async ({ raw, ctx }) => {
         const { translate } = await resolveTranslations()
@@ -95,7 +95,7 @@ const crud = makeCrudRoute({
       response: () => ({ ok: true }),
     },
     delete: {
-      commandId: 'bom.bomHeader.delete',
+      commandId: 'bom.bom_header.delete',
       schema: rawBodySchema,
       mapInput: async ({ parsed, ctx }) => {
         const { translate } = await resolveTranslations()

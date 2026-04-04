@@ -24,8 +24,6 @@ const variantConditionSchema = z.record(
 // BomHeader
 // ---------------------------------------------------------------------------
 
-const bomUsageValues = ['production', 'packaging'] as const
-
 export const bomHeaderCreateSchema = scopedSchema.extend({
   productId: uuid(),
   productionMethodId: uuid().nullable().optional(),

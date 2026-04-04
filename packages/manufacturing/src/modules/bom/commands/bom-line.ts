@@ -50,9 +50,9 @@ type BomLineSnapshot = {
 type BomLineUndoPayload = UndoPayload<BomLineSnapshot>
 
 function extractBomHeaderId(record: BomLine): string {
-  return typeof record.bomHeader === 'object' && record.bomHeader !== null
-    ? (record.bomHeader as any).id
-    : String(record.bomHeader)
+  const ref = record.bomHeader
+  if (typeof ref === 'object' && ref !== null && 'id' in ref) return (ref as { id: string }).id
+  return String(ref)
 }
 
 function snapshotBomLine(record: BomLine): BomLineSnapshot {
@@ -89,7 +89,7 @@ async function checkBomCycle(em: EntityManager, parentBomHeaderId: string, child
         deletedAt: null,
       })
       return childLines.map((l) => ({
-        bomHeaderId: typeof l.bomHeader === 'object' ? (l.bomHeader as any).id : String(l.bomHeader),
+        bomHeaderId: typeof l.bomHeader === 'object' && l.bomHeader !== null && 'id' in l.bomHeader ? (l.bomHeader as { id: string }).id : String(l.bomHeader),
         childBomHeaderId: l.childBomHeaderId ?? null,
       }))
     },
@@ -100,7 +100,7 @@ async function checkBomCycle(em: EntityManager, parentBomHeaderId: string, child
 }
 
 const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: string }> = {
-  id: 'bom.bomLine.create',
+  id: 'bom.bom_line.create',
   async execute(input, ctx) {
     const parsed = bomLineCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
@@ -178,7 +178,7 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
 }
 
 const updateBomLineCommand: CommandHandler<BomLineUpdateInput, { bomLineId: string }> = {
-  id: 'bom.bomLine.update',
+  id: 'bom.bom_line.update',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM line ID is required')
     const em = ctx.container.resolve('em') as EntityManager
@@ -283,7 +283,7 @@ const updateBomLineCommand: CommandHandler<BomLineUpdateInput, { bomLineId: stri
 }
 
 const deleteBomLineCommand: CommandHandler<{ id: string }, { bomLineId: string }> = {
-  id: 'bom.bomLine.delete',
+  id: 'bom.bom_line.delete',
   async prepare(input, ctx) {
     requireId(input.id, 'BOM line ID is required')
     const em = ctx.container.resolve('em') as EntityManager
