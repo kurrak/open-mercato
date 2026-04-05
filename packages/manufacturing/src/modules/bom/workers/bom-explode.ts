@@ -116,7 +116,7 @@ export default async function handle(
       progressCtx,
     )
 
-    await emitBomEvent('manufacturing.bom.exploded', {
+    await emitBomEvent('bom.explosion.completed', {
       bomHeaderId,
       lineCount: result.lines.length,
       depth: result.depth,

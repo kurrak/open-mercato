@@ -16,7 +16,7 @@ import type { CrudEventsConfig } from '@open-mercato/shared/lib/crud/types'
 import type { DataEngine } from '@open-mercato/shared/lib/data/engine'
 
 const bomLineCrudEvents: CrudEventsConfig = {
-  module: 'manufacturing',
+  module: 'bom',
   entity: 'bom_line',
   persistent: true,
   buildPayload: (ctx) => ({

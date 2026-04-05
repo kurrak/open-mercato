@@ -382,15 +382,15 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 
 ```typescript
 const events = [
-  { id: 'manufacturing.routing.created', label: 'Routing Created', entity: 'routing_template', category: 'crud' },
-  { id: 'manufacturing.routing.updated', label: 'Routing Updated', entity: 'routing_template', category: 'crud' },
-  { id: 'manufacturing.routing.deleted', label: 'Routing Deleted', entity: 'routing_template', category: 'crud' },
-  { id: 'manufacturing.operation.created', label: 'Operation Created', entity: 'operation_template', category: 'crud' },
-  { id: 'manufacturing.operation.updated', label: 'Operation Updated', entity: 'operation_template', category: 'crud' },
-  { id: 'manufacturing.operation.deleted', label: 'Operation Deleted', entity: 'operation_template', category: 'crud' },
-  { id: 'manufacturing.work_center.created', label: 'Work Center Created', entity: 'work_center', category: 'crud' },
-  { id: 'manufacturing.work_center.updated', label: 'Work Center Updated', entity: 'work_center', category: 'crud' },
-  { id: 'manufacturing.work_center.deleted', label: 'Work Center Deleted', entity: 'work_center', category: 'crud' },
+  { id: 'routing.routing_template.created', label: 'Routing Created', entity: 'routing_template', category: 'crud' },
+  { id: 'routing.routing_template.updated', label: 'Routing Updated', entity: 'routing_template', category: 'crud' },
+  { id: 'routing.routing_template.deleted', label: 'Routing Deleted', entity: 'routing_template', category: 'crud' },
+  { id: 'routing.operation_template.created', label: 'Operation Created', entity: 'operation_template', category: 'crud' },
+  { id: 'routing.operation_template.updated', label: 'Operation Updated', entity: 'operation_template', category: 'crud' },
+  { id: 'routing.operation_template.deleted', label: 'Operation Deleted', entity: 'operation_template', category: 'crud' },
+  { id: 'routing.work_center.created', label: 'Work Center Created', entity: 'work_center', category: 'crud' },
+  { id: 'routing.work_center.updated', label: 'Work Center Updated', entity: 'work_center', category: 'crud' },
+  { id: 'routing.work_center.deleted', label: 'Work Center Deleted', entity: 'work_center', category: 'crud' },
 ] as const
 ```
 
@@ -504,7 +504,7 @@ defaultRoleFeatures: {
 | root AGENTS.md | Validate inputs with Zod | Compliant | data/validators.ts with XOR on OperationTemplateVariant, overlap exclusivity on dependency |
 | root AGENTS.md | API routes MUST export openApi | Compliant | Via makeCrudRoute + custom endpoints with explicit openApi |
 | root AGENTS.md | Write operations via Command pattern | Compliant | 17 commands with undo contracts |
-| root AGENTS.md | Event IDs: module.entity.action (singular) | Compliant | manufacturing.routing.created, manufacturing.work_center.updated, etc. |
+| root AGENTS.md | Event IDs: module.entity.action (singular) | Compliant | routing.routing_template.created, routing.work_center.updated, etc. Module name as prefix per OM convention |
 | root AGENTS.md | DB schema ADDITIVE-ONLY | Compliant | All new tables |
 | root AGENTS.md | ACL feature IDs FROZEN once created | Compliant | New features (routing.*) |
 | packages/core AGENTS.md | setup.ts: declare defaultRoleFeatures | Compliant | admin: routing.*, employee: view |

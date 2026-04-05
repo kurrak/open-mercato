@@ -35,9 +35,9 @@ describe('Events config', () => {
     expect(eventsConfig.events.length).toBe(12)
   })
 
-  it('all event IDs follow manufacturing.entity.action format', () => {
+  it('all event IDs follow module.entity.action format', () => {
     for (const event of eventsConfig.events) {
-      expect(event.id).toMatch(/^manufacturing\.\w+\.\w+$/)
+      expect(event.id).toMatch(/^product_master\.\w+\.\w+$/)
       expect(event.category).toBe('crud')
     }
   })

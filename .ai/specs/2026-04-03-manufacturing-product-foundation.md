@@ -92,7 +92,7 @@ packages/manufacturing/
       product_master/                   # ── Product Master (Phase 1, Increment 1)
         index.ts                        #    Module metadata
         acl.ts                          #    product_master.view, product_master.edit
-        events.ts                       #    manufacturing.product_master.*
+        events.ts                       #    product_master.production_method.*, product_master.supplier_info.*, etc.
         setup.ts                        #    Seed UoM catalog, default config
         di.ts                           #    DI registration
         data/
@@ -113,7 +113,7 @@ packages/manufacturing/
       bom/                              # ── Bill of Materials (Phase 1, Increment 2)
         index.ts
         acl.ts                          #    bom.view, bom.create, bom.update, bom.delete, bom.explode
-        events.ts                       #    manufacturing.bom.*, manufacturing.bom.exploded
+        events.ts                       #    bom.bom_header.*, bom.explosion.completed
         di.ts
         data/
           entities.ts                   #    BomHeader, BomLine, BomLineVariant
@@ -131,7 +131,7 @@ packages/manufacturing/
       routing/                          # ── Routing & Work Centers (Phase 1, Increment 3)
         index.ts
         acl.ts                          #    routing.view, routing.create, routing.update, routing.delete
-        events.ts                       #    manufacturing.routing.*, manufacturing.work_center.*
+        events.ts                       #    routing.routing_template.*, routing.work_center.*
         di.ts
         data/
           entities.ts                   #    RoutingTemplate, OperationTemplate, OperationTemplateVariant,
@@ -149,7 +149,7 @@ packages/manufacturing/
       configurator/                     # ── Product Configurator (Phase 1, Increment 4)
         index.ts
         acl.ts                          #    configurator.view, configurator.edit
-        events.ts                       #    manufacturing.configurator.*
+        events.ts                       #    configurator.config_attribute.*, configurator.constraint_rule.*
         di.ts
         data/
           entities.ts                   #    ConfigAttribute, ConstraintRule
@@ -178,7 +178,7 @@ packages/manufacturing/
 | Entity extension (`data/extensions.ts`) | product_master | 3 fields on CatalogProduct (configuration_type, procurement_type, base_uom) via separate extension table |
 | Widget injection (`widgets/injection/`) | product_master | Product detail injection spots. BOM, routing, configurator modules inject their tabs into these spots |
 | Response enricher (`data/enrichers.ts`) | product_master | Manufacturing summary on CatalogProduct API responses (has_bom, has_routing, production_method_count) |
-| Events (`events.ts`) | each module | Per-module event declarations: bom module declares `manufacturing.bom.*`, routing declares `manufacturing.routing.*`, product_master declares `manufacturing.product_master.*` |
+| Events (`events.ts`) | each module | Per-module event declarations: bom module declares `bom.*`, routing declares `routing.*`, product_master declares `product_master.*`, configurator declares `configurator.*`. Module name = event prefix (OM convention) |
 | ACL features (`acl.ts`) | each module | Per-module features: `product_master.view`, `product_master.edit` (product_master), `bom.create` (bom), `routing.view` (routing), `configurator.edit` (configurator) |
 
 ### Entity Dependency Graph
@@ -221,13 +221,19 @@ Cross-module UUID FKs:
 
 All events use `manufacturing.` prefix with singular entity names:
 
-- `manufacturing.production_method.created|updated|deleted`
-- `manufacturing.bom.created|updated|deleted`
-- `manufacturing.bom.exploded` (payload: product_id, explosion result summary)
-- `manufacturing.routing.created|updated|deleted`
-- `manufacturing.work_center.created|updated|deleted`
-- `manufacturing.configurator.attribute.created|updated|deleted`
-- `manufacturing.configurator.resolved` (payload: product_id, resolved config)
+- `product_master.production_method.created|updated|deleted`
+- `product_master.supplier_info.created|updated|deleted`
+- `product_master.unit_of_measure.created|updated|deleted`
+- `product_master.uom_conversion.created|updated|deleted`
+- `bom.bom_header.created|updated|deleted`
+- `bom.bom_line.created|updated|deleted`
+- `bom.explosion.completed` (payload: product_id, explosion result summary)
+- `routing.routing_template.created|updated|deleted`
+- `routing.operation_template.created|updated|deleted`
+- `routing.work_center.created|updated|deleted`
+- `configurator.config_attribute.created|updated|deleted`
+- `configurator.constraint_rule.created|updated|deleted`
+- `configurator.configuration.resolved` (payload: product_id, resolved config)
 
 ## Sub-Spec Roadmap
 
@@ -421,7 +427,7 @@ Key integration test: full product card end-to-end — product → production me
 | root AGENTS.md | Validate all inputs with Zod | Compliant | data/validators.ts for all entities |
 | root AGENTS.md | API routes MUST export openApi | Compliant | All CRUD routes via makeCrudRoute + openapi.ts factory. Custom endpoints export explicit openApi |
 | root AGENTS.md | Write operations via Command pattern | Compliant | Commands for BOM create/update/delete, routing CRUD, configurator CRUD |
-| root AGENTS.md | Event IDs: module.entity.action (singular, past tense) | Compliant | `manufacturing.bom.created`, `manufacturing.routing.updated`, etc. |
+| root AGENTS.md | Event IDs: module.entity.action (singular, past tense) | Compliant | `bom.bom_header.created`, `routing.operation_template.updated`, etc. Module name as prefix per OM convention |
 | root AGENTS.md | Backward compatibility: event IDs FROZEN | Compliant | New namespace, no existing events modified |
 | root AGENTS.md | Backward compatibility: DB schema ADDITIVE-ONLY | Compliant | All new tables. Extension table is separate from catalog_product |
 | root AGENTS.md | Backward compatibility: widget spot IDs FROZEN | Compliant | New spot IDs (product-detail:manufacturing:*). No existing spots modified |

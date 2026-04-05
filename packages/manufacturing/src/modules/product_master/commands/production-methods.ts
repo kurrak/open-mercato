@@ -15,7 +15,7 @@ import type { CrudEventsConfig } from '@open-mercato/shared/lib/crud/types'
 import type { DataEngine } from '@open-mercato/shared/lib/data/engine'
 
 const pmCrudEvents: CrudEventsConfig = {
-  module: 'manufacturing',
+  module: 'product_master',
   entity: 'production_method',
   persistent: true,
   buildPayload: (ctx) => ({

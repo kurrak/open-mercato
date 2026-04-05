@@ -305,17 +305,17 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 
 ```typescript
 const events = [
-  { id: 'manufacturing.bom.created', label: 'BOM Created', entity: 'bom_header', category: 'crud' },
-  { id: 'manufacturing.bom.updated', label: 'BOM Updated', entity: 'bom_header', category: 'crud' },
-  { id: 'manufacturing.bom.deleted', label: 'BOM Deleted', entity: 'bom_header', category: 'crud' },
-  { id: 'manufacturing.bom_line.created', label: 'BOM Line Created', entity: 'bom_line', category: 'crud' },
-  { id: 'manufacturing.bom_line.updated', label: 'BOM Line Updated', entity: 'bom_line', category: 'crud' },
-  { id: 'manufacturing.bom_line.deleted', label: 'BOM Line Deleted', entity: 'bom_line', category: 'crud' },
-  { id: 'manufacturing.bom.exploded', label: 'BOM Exploded', entity: 'bom_header', category: 'lifecycle' },
+  { id: 'bom.bom_header.created', label: 'BOM Created', entity: 'bom_header', category: 'crud' },
+  { id: 'bom.bom_header.updated', label: 'BOM Updated', entity: 'bom_header', category: 'crud' },
+  { id: 'bom.bom_header.deleted', label: 'BOM Deleted', entity: 'bom_header', category: 'crud' },
+  { id: 'bom.bom_line.created', label: 'BOM Line Created', entity: 'bom_line', category: 'crud' },
+  { id: 'bom.bom_line.updated', label: 'BOM Line Updated', entity: 'bom_line', category: 'crud' },
+  { id: 'bom.bom_line.deleted', label: 'BOM Line Deleted', entity: 'bom_line', category: 'crud' },
+  { id: 'bom.explosion.completed', label: 'BOM Explosion Completed', entity: 'bom_header', category: 'lifecycle' },
 ] as const
 ```
 
-Note: `manufacturing.bom.exploded` is a lifecycle event (not CRUD) — emitted when async explosion completes. Payload includes `bomHeaderId`, `lineCount`, `depth`, `warningCount`.
+Note: `bom.explosion.completed` is a lifecycle event (not CRUD) — emitted when async explosion completes. Payload includes `bomHeaderId`, `lineCount`, `depth`, `warningCount`.
 
 ## ACL Features
 
@@ -440,7 +440,7 @@ defaultRoleFeatures: {
 | root AGENTS.md | Validate inputs with Zod | Compliant | data/validators.ts with XOR validation on BomLineVariant |
 | root AGENTS.md | API routes MUST export openApi | Compliant | Via makeCrudRoute + explode endpoint with explicit openApi |
 | root AGENTS.md | Write operations via Command pattern | Compliant | 9 commands with undo contracts |
-| root AGENTS.md | Event IDs: module.entity.action (singular) | Compliant | manufacturing.bom.created, manufacturing.bom_line.updated, etc. |
+| root AGENTS.md | Event IDs: module.entity.action (singular) | Compliant | bom.bom_header.created, bom.bom_line.updated, etc. Module name as prefix per OM convention |
 | root AGENTS.md | DB schema ADDITIVE-ONLY | Compliant | All new tables |
 | root AGENTS.md | Widget spot IDs FROZEN once created | Compliant | Injects into existing product_master spot, no new spots |
 | root AGENTS.md | ACL feature IDs FROZEN once created | Compliant | New features (bom.*) |
