@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
     const dependencies = await findWithDecryption(
       em, OperationDependency,
-      { predecessorOperation: { $in: operationIds }, organizationId: auth.orgId, tenantId: auth.tenantId },
+      { predecessorOperation: { $in: operationIds }, organizationId: auth.orgId, tenantId: auth.tenantId, deletedAt: null },
       {}, encScope,
     )
 

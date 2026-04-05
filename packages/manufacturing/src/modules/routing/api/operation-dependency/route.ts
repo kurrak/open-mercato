@@ -36,6 +36,7 @@ const crud = makeCrudRoute({
     idField: 'id',
     orgField: 'organizationId',
     tenantField: 'tenantId',
+    softDeleteField: 'deletedAt',
   },
   indexer: { entityType: 'routing:operation_dependency' },
   list: {

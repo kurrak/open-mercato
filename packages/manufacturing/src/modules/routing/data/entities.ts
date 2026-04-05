@@ -390,7 +390,7 @@ export type LinkStrength = 'required' | 'optional'
   expression: `NOT ("overlap_quantity" IS NOT NULL AND "overlap_time_minutes" IS NOT NULL)`,
 })
 export class OperationDependency {
-  [OptionalProps]?: 'dependencyType' | 'linkStrength' | 'createdAt' | 'updatedAt'
+  [OptionalProps]?: 'dependencyType' | 'linkStrength' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string
@@ -435,5 +435,6 @@ export class OperationDependency {
   @Property({ name: 'updated_at', type: Date, onUpdate: () => new Date() })
   updatedAt: Date = new Date()
 
-  // No deleted_at — dependencies are hard-deleted (graph edges, not business documents)
+  @Property({ name: 'deleted_at', type: Date, nullable: true })
+  deletedAt?: Date | null
 }

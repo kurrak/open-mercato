@@ -113,8 +113,15 @@ const createOperationDependencyCommand: CommandHandler<OperationDependencyCreate
       payload: { undo: { after } },
     }
   },
-  undo: async () => {
-    // Hard delete — no undo needed, user can re-create
+  undo: async ({ logEntry, ctx }) => {
+    const payload = extractUndoPayload<OperationDependencyUndoPayload>(logEntry)
+    const after = payload?.after ?? null
+    if (!after) return
+    const em = (ctx.container.resolve('em') as EntityManager).fork()
+    const record = await em.findOne(OperationDependency, { id: after.id })
+    if (!record) return
+    record.deletedAt = new Date()
+    await em.flush()
   },
 }
 
@@ -217,18 +224,18 @@ const deleteOperationDependencyCommand: CommandHandler<{ id: string }, { operati
   async execute(input, ctx) {
     requireId(input.id, 'Operation dependency ID is required')
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(OperationDependency, { id: input.id })
+    const record = await em.findOne(OperationDependency, { id: input.id, deletedAt: null })
     if (!record) {
       throw new CrudHttpError(404, { error: 'Operation dependency not found' })
     }
-    em.remove(record)
+    record.deletedAt = new Date()
     await em.flush()
 
     const de = ctx.container.resolve('dataEngine') as DataEngine
     await emitCrudSideEffects({
       dataEngine: de,
       action: 'deleted',
-      entity: { id: record.id, organizationId: record.organizationId, tenantId: record.tenantId },
+      entity: record,
       identifiers: {
         id: record.id,
         organizationId: record.organizationId,
@@ -252,8 +259,15 @@ const deleteOperationDependencyCommand: CommandHandler<{ id: string }, { operati
       payload: { undo: { before } },
     }
   },
-  undo: async () => {
-    // Hard delete — no undo needed, user can re-create
+  undo: async ({ logEntry, ctx }) => {
+    const payload = extractUndoPayload<OperationDependencyUndoPayload>(logEntry)
+    const before = payload?.before ?? null
+    if (!before) return
+    const em = (ctx.container.resolve('em') as EntityManager).fork()
+    const record = await em.findOne(OperationDependency, { id: before.id })
+    if (!record) return
+    record.deletedAt = null
+    await em.flush()
   },
 }
 

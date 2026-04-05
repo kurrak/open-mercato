@@ -222,11 +222,11 @@ Directed edge in the operation DAG. Defines execution order constraints between 
 | `overlap_time_minutes` | NUMERIC(10,2) | nullable | null | Successor can start N minutes after predecessor starts. Mutually exclusive with overlap_quantity |
 | `created_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | now() | — |
+| `deleted_at` | TIMESTAMPTZ | nullable | null | Soft delete (per OM convention — every command must be undoable) |
 
 **Constraints:**
 - Application-enforced (Zod): predecessor and successor must belong to the same RoutingTemplate
 - DB CHECK + Zod `.refine()`: overlap_quantity and overlap_time_minutes are mutually exclusive — `CHECK (NOT (overlap_quantity IS NOT NULL AND overlap_time_minutes IS NOT NULL))`
-- No `deleted_at` — dependencies are hard-deleted (they're graph edges, not business documents)
 
 **Indexes:** `(predecessor_operation_id)` and `(successor_operation_id)` for graph traversal. `(organization_id, predecessor_operation_id, successor_operation_id)` UNIQUE to prevent duplicate edges.
 
@@ -236,7 +236,7 @@ Lives in `lib/dependency-graph.ts` as a pure function. Runs on routing save (syn
 
 ### Validations
 
-1. **Cycle detection**: topological sort of operations via dependencies. If sort fails (cycle found), return error listing the cycle path
+1. **Cycle detection**: topological sort of operations via active dependencies (exclude soft-deleted). If sort fails (cycle found), return error listing the cycle path
 2. **Both operations in same routing**: predecessor_operation_id and successor_operation_id must reference operations in the same RoutingTemplate
 3. **No self-reference**: predecessor ≠ successor
 4. **Duplicate edge prevention**: UNIQUE constraint on (predecessor, successor)
@@ -345,7 +345,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 - `GET /api/manufacturing/operation-dependency` — List (filtered by routing_template_id via operation FK)
 - `POST /api/manufacturing/operation-dependency` — Create (triggers DAG validation)
 - `PUT /api/manufacturing/operation-dependency/:id` — Update (triggers DAG validation)
-- `DELETE /api/manufacturing/operation-dependency/:id` — Hard delete
+- `DELETE /api/manufacturing/operation-dependency/:id` — Soft delete
 
 ### Custom Endpoints
 - `POST /api/manufacturing/routing/validate-graph` — DAG validation (see algorithm above)
@@ -376,7 +376,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 | `routing.operation_template_variant.delete` | OperationTemplateVariant | Restore soft-deleted record |
 | `routing.operation_dependency.create` | OperationDependency | Delete created record |
 | `routing.operation_dependency.update` | OperationDependency | Restore previous field values |
-| `routing.operation_dependency.delete` | OperationDependency | (hard delete — no undo needed, user can re-create) |
+| `routing.operation_dependency.delete` | OperationDependency | Restore soft-deleted record |
 
 ### Events
 
@@ -517,7 +517,7 @@ defaultRoleFeatures: {
 | Data models match API contracts | Pass | 6 CRUD resources + 2 custom endpoints match 6 entities + 2 algorithms |
 | API contracts match UI/UX section | Pass | Routing tab + graph visualization consume CRUD + validation + rollup APIs |
 | Risks cover all write operations | Pass | CRUD, DAG validation, concurrent edits, soft delete cascading |
-| Commands defined for all mutations | Pass | 17 commands (including hard delete for dependencies) |
+| Commands defined for all mutations | Pass | 17 commands with standard undo (all soft-delete) |
 | Cache strategy covers all read APIs | N/A | No caching needed — standard CRUD |
 
 ### Verdict
@@ -535,6 +535,9 @@ defaultRoleFeatures: {
 ---
 
 ## Changelog
+
+### 2026-04-05
+- OperationDependency changed from hard-delete to soft-delete with standard undo. OM convention requires every command to be undoable. DAG validation updated to exclude soft-deleted dependencies
 
 ### 2026-04-04
 - Pre-implementation analysis fixes: added warnings to TimeRollupResult, overlap CHECK constraint on OperationDependency, hand-write migration with FK dependency order in Phase A, validateCrudMutationGuard + withAtomicFlush in Phase A

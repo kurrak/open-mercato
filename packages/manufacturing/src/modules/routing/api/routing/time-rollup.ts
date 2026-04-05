@@ -47,7 +47,7 @@ export async function POST(req: Request) {
       : []
 
     const dependencies = operationIds.length > 0
-      ? await findWithDecryption(em, OperationDependency, { predecessorOperation: { $in: operationIds }, organizationId: auth.orgId, tenantId: auth.tenantId }, {}, encScope)
+      ? await findWithDecryption(em, OperationDependency, { predecessorOperation: { $in: operationIds }, organizationId: auth.orgId, tenantId: auth.tenantId, deletedAt: null }, {}, encScope)
       : []
 
     // Build variant overrides map
