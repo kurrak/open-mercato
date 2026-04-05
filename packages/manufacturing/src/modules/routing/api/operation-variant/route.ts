@@ -104,7 +104,7 @@ const listItemSchema = z.object({
   tenant_id: z.string().uuid().nullable().optional(),
   operation_template_id: z.string().uuid().nullable().optional(),
   variant_id: z.string().uuid().nullable().optional(),
-  variant_condition: z.record(z.unknown()).nullable().optional(),
+  variant_condition: z.record(z.string(), z.unknown()).nullable().optional(),
   run_time_override: z.string().nullable().optional(),
   setup_time_override: z.string().nullable().optional(),
   teardown_time_override: z.string().nullable().optional(),

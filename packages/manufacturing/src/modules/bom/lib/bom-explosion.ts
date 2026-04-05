@@ -79,34 +79,12 @@ export type BomDataLoader = {
 }
 
 // ---------------------------------------------------------------------------
-// Variant Condition Matching
+// Variant Condition Matching — imported from shared package lib
 // ---------------------------------------------------------------------------
 
-export function matchVariantCondition(
-  lineCondition: Record<string, unknown>,
-  inputConditions: Record<string, string[]>,
-): boolean {
-  for (const [key, conditionValue] of Object.entries(lineCondition)) {
-    const inputValues = inputConditions[key]
-    if (!inputValues || inputValues.length === 0) return false
+import { matchVariantCondition as _matchVariantCondition } from '../../../lib/variant-condition'
 
-    if (
-      typeof conditionValue === 'object' &&
-      conditionValue !== null &&
-      !Array.isArray(conditionValue) &&
-      'not' in conditionValue
-    ) {
-      const negatedValues = (conditionValue as { not: string[] }).not
-      if (inputValues.some((v) => negatedValues.includes(v))) return false
-    } else if (Array.isArray(conditionValue)) {
-      const allowedValues = conditionValue as string[]
-      if (!inputValues.some((v) => allowedValues.includes(v))) return false
-    } else {
-      return false
-    }
-  }
-  return true
-}
+export const matchVariantCondition = _matchVariantCondition
 
 // ---------------------------------------------------------------------------
 // Date-Effective Filtering

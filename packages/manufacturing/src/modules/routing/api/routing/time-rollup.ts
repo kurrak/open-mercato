@@ -9,7 +9,7 @@ import { readJsonSafe } from '@open-mercato/shared/lib/http/readJsonSafe'
 import { findWithDecryption } from '@open-mercato/shared/lib/encryption/find'
 import { OperationTemplate, OperationTemplateVariant, OperationDependency, WorkCenter } from '../../data/entities'
 import { computeTimeRollup, type OperationTimeInput, type VariantTimeOverride } from '../../lib/time-rollup'
-import { matchVariantCondition } from '../../../bom/lib/bom-explosion'
+import { matchVariantCondition } from '../../../../lib/variant-condition'
 
 export const metadata = {
   POST: { requireAuth: true, requireFeatures: ['routing.view'] },

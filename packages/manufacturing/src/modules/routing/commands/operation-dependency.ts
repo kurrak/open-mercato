@@ -46,9 +46,9 @@ function snapshotDependency(record: OperationDependency): OperationDependencySna
   }
 }
 
-async function validateSameRouting(em: EntityManager, predecessorOperationId: string, successorOperationId: string): Promise<void> {
-  const predOp = await em.findOneOrFail(OperationTemplate, { id: predecessorOperationId }, { populate: ['routingTemplate'] })
-  const succOp = await em.findOneOrFail(OperationTemplate, { id: successorOperationId }, { populate: ['routingTemplate'] })
+async function validateSameRouting(em: EntityManager, predecessorOperationId: string, successorOperationId: string, organizationId: string, tenantId: string): Promise<void> {
+  const predOp = await em.findOneOrFail(OperationTemplate, { id: predecessorOperationId, organizationId, tenantId }, { populate: ['routingTemplate'] })
+  const succOp = await em.findOneOrFail(OperationTemplate, { id: successorOperationId, organizationId, tenantId }, { populate: ['routingTemplate'] })
   const predRoutingId = typeof predOp.routingTemplate === 'object' && predOp.routingTemplate !== null && 'id' in predOp.routingTemplate ? (predOp.routingTemplate as { id: string }).id : String(predOp.routingTemplate)
   const succRoutingId = typeof succOp.routingTemplate === 'object' && succOp.routingTemplate !== null && 'id' in succOp.routingTemplate ? (succOp.routingTemplate as { id: string }).id : String(succOp.routingTemplate)
   if (predRoutingId !== succRoutingId) {
@@ -62,10 +62,10 @@ const createOperationDependencyCommand: CommandHandler<OperationDependencyCreate
     const parsed = operationDependencyCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
 
-    await validateSameRouting(em, parsed.predecessorOperationId, parsed.successorOperationId)
+    await validateSameRouting(em, parsed.predecessorOperationId, parsed.successorOperationId, parsed.organizationId, parsed.tenantId)
 
-    const predecessorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.predecessorOperationId })
-    const successorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.successorOperationId })
+    const predecessorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.predecessorOperationId, organizationId: parsed.organizationId, tenantId: parsed.tenantId })
+    const successorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.successorOperationId, organizationId: parsed.organizationId, tenantId: parsed.tenantId })
 
     const record = em.create(OperationDependency, {
       organizationId: parsed.organizationId,
