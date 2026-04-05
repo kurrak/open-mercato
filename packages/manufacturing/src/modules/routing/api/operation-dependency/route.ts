@@ -131,6 +131,6 @@ export const openApi = createRoutingCrudOpenApi({
   del: {
     schema: z.object({ id: z.string().uuid() }),
     responseSchema: defaultOkResponseSchema,
-    description: 'Hard-deletes an operation dependency by ID.',
+    description: 'Soft-deletes an operation dependency by ID.',
   },
 })

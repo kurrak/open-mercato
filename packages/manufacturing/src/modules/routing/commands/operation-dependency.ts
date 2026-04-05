@@ -12,6 +12,7 @@ import {
   type OperationDependencyUpdateInput,
 } from '../data/validators'
 import type { DataEngine } from '@open-mercato/shared/lib/data/engine'
+import { extractRefId } from '../../../lib/entity-utils'
 
 type OperationDependencySnapshot = {
   id: string
@@ -27,10 +28,7 @@ type OperationDependencySnapshot = {
 
 type OperationDependencyUndoPayload = UndoPayload<OperationDependencySnapshot>
 
-function extractOperationId(ref: OperationTemplate | unknown): string {
-  if (typeof ref === 'object' && ref !== null && 'id' in ref) return (ref as { id: string }).id
-  return String(ref)
-}
+const extractOperationId = extractRefId
 
 function snapshotDependency(record: OperationDependency): OperationDependencySnapshot {
   return {

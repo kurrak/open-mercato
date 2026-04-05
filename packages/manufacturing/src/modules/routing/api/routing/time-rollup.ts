@@ -10,6 +10,7 @@ import { findWithDecryption } from '@open-mercato/shared/lib/encryption/find'
 import { OperationTemplate, OperationTemplateVariant, OperationDependency, WorkCenter } from '../../data/entities'
 import { computeTimeRollup, type OperationTimeInput, type VariantTimeOverride } from '../../lib/time-rollup'
 import { matchVariantCondition } from '../../../../lib/variant-condition'
+import { extractRefId } from '../../../../lib/entity-utils'
 
 export const metadata = {
   POST: { requireAuth: true, requireFeatures: ['routing.view'] },
@@ -53,8 +54,7 @@ export async function POST(req: Request) {
     // Build variant overrides map
     const variantOverrides = new Map<string, VariantTimeOverride>()
     for (const v of variants) {
-      const opId = typeof v.operationTemplate === 'object' && v.operationTemplate !== null && 'id' in v.operationTemplate
-        ? (v.operationTemplate as { id: string }).id : String(v.operationTemplate)
+      const opId = extractRefId(v.operationTemplate)
 
       let matches = false
       if (v.variantCondition && Object.keys(parsed.variantConditions).length > 0) {
@@ -84,14 +84,10 @@ export async function POST(req: Request) {
       }
     })
 
-    const edges = dependencies.map((dep) => {
-      const predRef = dep.predecessorOperation
-      const succRef = dep.successorOperation
-      return {
-        predecessorId: typeof predRef === 'object' && predRef !== null && 'id' in predRef ? (predRef as { id: string }).id : String(predRef),
-        successorId: typeof succRef === 'object' && succRef !== null && 'id' in succRef ? (succRef as { id: string }).id : String(succRef),
-      }
-    })
+    const edges = dependencies.map((dep) => ({
+      predecessorId: extractRefId(dep.predecessorOperation),
+      successorId: extractRefId(dep.successorOperation),
+    }))
 
     const result = computeTimeRollup({
       operations: operationInputs,

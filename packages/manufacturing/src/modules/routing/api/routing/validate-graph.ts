@@ -8,6 +8,7 @@ import { CrudHttpError } from '@open-mercato/shared/lib/crud/errors'
 import { readJsonSafe } from '@open-mercato/shared/lib/http/readJsonSafe'
 import { findWithDecryption } from '@open-mercato/shared/lib/encryption/find'
 import { OperationTemplate, OperationDependency } from '../../data/entities'
+import { extractRefId } from '../../../../lib/entity-utils'
 import { validateDag } from '../../lib/dependency-graph'
 
 export const metadata = {
@@ -45,14 +46,10 @@ export async function POST(req: Request) {
       {}, encScope,
     )
 
-    const edges = dependencies.map((dep) => {
-      const predRef = dep.predecessorOperation
-      const succRef = dep.successorOperation
-      return {
-        predecessorId: typeof predRef === 'object' && predRef !== null && 'id' in predRef ? (predRef as { id: string }).id : String(predRef),
-        successorId: typeof succRef === 'object' && succRef !== null && 'id' in succRef ? (succRef as { id: string }).id : String(succRef),
-      }
-    })
+    const edges = dependencies.map((dep) => ({
+      predecessorId: extractRefId(dep.predecessorOperation),
+      successorId: extractRefId(dep.successorOperation),
+    }))
 
     const result = validateDag(operationIds, edges)
     return NextResponse.json(result)
