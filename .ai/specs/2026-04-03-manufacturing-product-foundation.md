@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | In Progress |
 | **Created** | 2026-04-03 |
 | **Type** | Multi-part spec family (main + 4 sub-specs) |
 | **Mode** | External Extension (`packages/manufacturing`) |
