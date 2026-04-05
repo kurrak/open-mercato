@@ -524,6 +524,14 @@ defaultRoleFeatures: {
 
 **Fully compliant** — ready for implementation.
 
+## Implementation Status
+
+| Phase | Status | Date | Notes |
+|-------|--------|------|-------|
+| Phase A — Work Centers + Entities | Done | 2026-04-04 | 6 entities, 17 commands, 6 CRUD routes, migration |
+| Phase B — DAG Validation + Time Rollup | Done | 2026-04-04 | Pure DAG validation (Kahn's algo), time rollup with critical path, 2 custom endpoints |
+| Phase C — Widget + Tests | Done | 2026-04-04 | RoutingTab placeholder, 31 new tests (DAG: 10, time rollup: 8, validators: 13). Total package: 136 tests |
+
 ---
 
 ## Changelog
