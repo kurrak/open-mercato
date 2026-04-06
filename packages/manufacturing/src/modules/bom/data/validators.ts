@@ -26,7 +26,6 @@ const variantConditionSchema = z.record(
 
 export const bomHeaderCreateSchema = scopedSchema.extend({
   productId: uuid(),
-  productionMethodId: uuid().nullable().optional(),
   name: z.string().trim().min(1).max(255),
   bomUsage: z.string().trim().min(1).max(20).default('production'),
   isPhantom: z.boolean().optional(),
@@ -38,7 +37,6 @@ export const bomHeaderCreateSchema = scopedSchema.extend({
 export const bomHeaderUpdateSchema = z.object({ id: uuid() }).merge(
   scopedSchema
     .extend({
-      productionMethodId: uuid().nullable(),
       name: z.string().trim().min(1).max(255),
       bomUsage: z.string().trim().min(1).max(20),
       isPhantom: z.boolean(),

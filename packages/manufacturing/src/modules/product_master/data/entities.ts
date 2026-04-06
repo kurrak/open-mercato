@@ -14,7 +14,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export type ConfigurationType = 'none' | 'variant_based' | 'rule_based'
-export type ProcurementType = 'buy' | 'make' | 'buy_and_make'
+export type ProcurementType = 'buy' | 'make' | 'buy_and_make' | 'service'
 export type UomType = 'piece' | 'length' | 'area' | 'weight' | 'volume' | 'time'
 export type LifecycleState = 'draft' | 'active' | 'superseded' | 'archived'
 
@@ -79,7 +79,7 @@ export class UnitOfMeasure {
   properties: ['organizationId', 'tenantId', 'productId'],
 })
 export class ProductManufacturingExtension {
-  [OptionalProps]?: 'configurationType' | 'procurementType' | 'createdAt' | 'updatedAt' | 'deletedAt'
+  [OptionalProps]?: 'configurationType' | 'procurementType' | 'isPhantomDefault' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
   @PrimaryKey({ type: 'uuid', defaultRaw: 'gen_random_uuid()' })
   id!: string
@@ -106,6 +106,9 @@ export class ProductManufacturingExtension {
     nullable: false,
   })
   baseUom!: UnitOfMeasure
+
+  @Property({ name: 'is_phantom_default', type: 'boolean', default: false })
+  isPhantomDefault: boolean = false
 
   @Property({ name: 'created_at', type: Date, onCreate: () => new Date() })
   createdAt: Date = new Date()

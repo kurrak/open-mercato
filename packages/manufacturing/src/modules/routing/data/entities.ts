@@ -141,10 +141,6 @@ export class WorkCenter {
   name: 'manufacturing_rt_org_product_idx',
   properties: ['organizationId', 'productId'],
 })
-@Index({
-  name: 'manufacturing_rt_org_pm_idx',
-  properties: ['organizationId', 'productionMethodId'],
-})
 export class RoutingTemplate {
   [OptionalProps]?: 'isActive' | 'version' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
@@ -159,9 +155,6 @@ export class RoutingTemplate {
 
   @Property({ name: 'product_id', type: 'uuid' })
   productId!: string
-
-  @Property({ name: 'production_method_id', type: 'uuid', nullable: true })
-  productionMethodId?: string | null
 
   @Property({ type: 'varchar', length: 255 })
   name!: string

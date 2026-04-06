@@ -27,7 +27,6 @@ const listSchema = z
     productId: z.string().uuid().optional(),
     bomUsage: z.string().optional(),
     isActive: z.string().optional(),
-    productionMethodId: z.string().uuid().optional(),
     ids: z.string().optional(),
     sortField: z.string().optional(),
     sortDir: z.enum(['asc', 'desc']).optional(),
@@ -48,7 +47,7 @@ const crud = makeCrudRoute({
     schema: listSchema,
     entityId: 'bom:bom_header',
     fields: [
-      'id', 'organization_id', 'tenant_id', 'product_id', 'production_method_id',
+      'id', 'organization_id', 'tenant_id', 'product_id',
       'name', 'bom_usage', 'is_phantom', 'is_active', 'version', 'notes',
       'created_at', 'updated_at',
     ],
@@ -61,7 +60,6 @@ const crud = makeCrudRoute({
       const filters: Record<string, unknown> = {}
       if (query.productId) filters.product_id = { $eq: query.productId }
       if (query.bomUsage) filters.bom_usage = { $eq: query.bomUsage }
-      if (query.productionMethodId) filters.production_method_id = { $eq: query.productionMethodId }
       const activeToken = parseBooleanToken(query.isActive)
       if (activeToken !== undefined) filters.is_active = { $eq: activeToken }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
@@ -117,7 +115,6 @@ const listItemSchema = z.object({
   organization_id: z.string().uuid().nullable().optional(),
   tenant_id: z.string().uuid().nullable().optional(),
   product_id: z.string().uuid().nullable().optional(),
-  production_method_id: z.string().uuid().nullable().optional(),
   name: z.string().nullable().optional(),
   bom_usage: z.string().nullable().optional(),
   is_phantom: z.boolean().nullable().optional(),

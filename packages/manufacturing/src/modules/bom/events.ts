@@ -9,6 +9,10 @@ const events = [
   { id: 'bom.bom_line.updated', label: 'BOM Line Updated', entity: 'bom_line', category: 'crud' },
   { id: 'bom.bom_line.deleted', label: 'BOM Line Deleted', entity: 'bom_line', category: 'crud' },
 
+  { id: 'bom.bom_line_variant.created', label: 'BOM Line Variant Created', entity: 'bom_line_variant', category: 'crud' },
+  { id: 'bom.bom_line_variant.updated', label: 'BOM Line Variant Updated', entity: 'bom_line_variant', category: 'crud' },
+  { id: 'bom.bom_line_variant.deleted', label: 'BOM Line Variant Deleted', entity: 'bom_line_variant', category: 'crud' },
+
   { id: 'bom.explosion.completed', label: 'BOM Explosion Completed', entity: 'bom_header', category: 'lifecycle' },
 ] as const
 

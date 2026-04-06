@@ -49,7 +49,7 @@ export type UnitOfMeasureUpdateInput = z.infer<typeof unitOfMeasureUpdateSchema>
 // ---------------------------------------------------------------------------
 
 const configurationTypes = ['none', 'variant_based', 'rule_based'] as const
-const procurementTypes = ['buy', 'make', 'buy_and_make'] as const
+const procurementTypes = ['buy', 'make', 'buy_and_make', 'service'] as const
 
 export const productMfgExtensionUpdateSchema = z.object({ id: uuid() }).merge(
   scopedSchema
@@ -57,6 +57,7 @@ export const productMfgExtensionUpdateSchema = z.object({ id: uuid() }).merge(
       configurationType: z.enum(configurationTypes),
       procurementType: z.enum(procurementTypes),
       baseUomId: uuid(),
+      isPhantomDefault: z.boolean(),
     })
     .partial(),
 )
@@ -168,3 +169,12 @@ export const uomConversionUpdateSchema = z.object({ id: uuid() }).merge(
 
 export type UomConversionCreateInput = z.infer<typeof uomConversionCreateSchema>
 export type UomConversionUpdateInput = z.infer<typeof uomConversionUpdateSchema>
+
+// ---------------------------------------------------------------------------
+// ProductionMethod Resolution
+// ---------------------------------------------------------------------------
+
+export const productionMethodResolveSchema = z.object({
+  productId: uuid(),
+  variantConditions: z.record(z.string(), z.array(z.string())).optional(),
+})

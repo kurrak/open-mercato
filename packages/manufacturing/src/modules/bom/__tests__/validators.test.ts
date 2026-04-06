@@ -24,7 +24,6 @@ describe('BomHeader validators', () => {
       ...scope,
       productId: uuid,
       name: 'Secondary BOM',
-      productionMethodId: uuid,
       bomUsage: 'packaging',
       isPhantom: true,
       isActive: false,

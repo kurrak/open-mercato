@@ -44,6 +44,7 @@ describe('Entity class structure', () => {
     const ext = new ProductManufacturingExtension()
     expect(ext.configurationType).toBe('none')
     expect(ext.procurementType).toBe('buy')
+    expect(ext.isPhantomDefault).toBe(false)
     expect(ext.deletedAt).toBeUndefined()
   })
 

@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | In Progress (review fixes pending) |
+| **Status** | Implemented |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `bom`) |
@@ -472,7 +472,7 @@ defaultRoleFeatures: {
 | Phase A — Entities + CRUD | Done | 2026-04-04 | 3 entities, 9 commands, 3 CRUD routes, where-used endpoint, cycle detection, migration |
 | Phase B — Explosion + Worker | Done | 2026-04-04 | Pure explosion algorithm, async queue worker with ProgressService, explode endpoint |
 | Phase C — Widget + Tests | Done | 2026-04-04 | BOM tab placeholder, 44 new tests (explosion: 16, validators: 12, cycle detection: 6, variant matching: 8, + product_master: 57). Total: 101 tests |
-| Review fixes | Pending | — | Remove `production_method_id` from BomHeader entity + validator. Add bom_line_variant CRUD events. DB wipe + regenerate migration |
+| Review fixes | Done | 2026-04-06 | Removed production_method_id from BomHeader entity/validator/command/route. Added 3 bom_line_variant CRUD events. Migration regenerated |
 
 ---
 

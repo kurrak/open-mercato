@@ -30,7 +30,6 @@ type RoutingTemplateSnapshot = {
   organizationId: string
   tenantId: string
   productId: string
-  productionMethodId: string | null
   name: string
   isActive: boolean
   version: number
@@ -45,7 +44,6 @@ function snapshotRoutingTemplate(record: RoutingTemplate): RoutingTemplateSnapsh
     organizationId: record.organizationId,
     tenantId: record.tenantId,
     productId: record.productId,
-    productionMethodId: record.productionMethodId ?? null,
     name: record.name,
     isActive: record.isActive,
     version: record.version,
@@ -63,7 +61,6 @@ const createRoutingTemplateCommand: CommandHandler<RoutingTemplateCreateInput, {
       organizationId: parsed.organizationId,
       tenantId: parsed.tenantId,
       productId: parsed.productId,
-      productionMethodId: parsed.productionMethodId ?? null,
       name: parsed.name,
       isActive: parsed.isActive ?? true,
       version: parsed.version ?? 1,
@@ -136,7 +133,7 @@ const updateRoutingTemplateCommand: CommandHandler<RoutingTemplateUpdateInput, {
     }
 
     const allChanges = buildChanges(record as unknown as Record<string, unknown>, parsed, [
-      'productionMethodId', 'name', 'isActive', 'version', 'notes',
+      'name', 'isActive', 'version', 'notes',
     ])
     const changes = Object.fromEntries(
       Object.entries(allChanges).filter(([, c]) => c.to !== undefined),
@@ -195,7 +192,6 @@ const updateRoutingTemplateCommand: CommandHandler<RoutingTemplateUpdateInput, {
     const record = await em.findOne(RoutingTemplate, { id: before.id })
     if (!record) return
     Object.assign(record, {
-      productionMethodId: before.productionMethodId,
       name: before.name,
       isActive: before.isActive,
       version: before.version,

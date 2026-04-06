@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | In Progress (review fixes pending — Phase E) |
+| **Status** | Implemented |
 | **Created** | 2026-04-03 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `product_master`) |
@@ -482,7 +482,7 @@ defaultRoleFeatures: {
 | Phase B — CRUD APIs + Subscribers | Done | 2026-04-04 | 4 CRUD routes with makeCrudRoute + OpenAPI, 12 commands with undo, product deletion subscriber |
 | Phase C — Extension + Enricher + Widgets | Done | 2026-04-04 | Manufacturing summary enricher on catalog.product, widget injection spots, dashboard page |
 | Phase D — Tests | Done | 2026-04-04 | 57 unit tests (validators, module structure, entity defaults, UoM conversion math). Build passes |
-| Phase E — Review fixes | Pending | — | Add `is_phantom_default` field to extension entity + validator. Add `service` to procurement_type enum. Implement `POST /api/manufacturing/production-method/resolve` endpoint + `lib/resolve-production-method.ts`. Remove `production_method_id` from BomHeader and RoutingTemplate entities/validators (FK direction reversal — PM owns both FKs). Add missing events (bom_line_variant, factory_zone, operation_template_variant, operation_dependency). DB wipe + regenerate all manufacturing package migrations (all 4 modules affected: product_master gets is_phantom_default, bom loses production_method_id, routing loses production_method_id, configurator unchanged but regenerated for consistency) |
+| Phase E — Review fixes | Done | 2026-04-06 | Added `is_phantom_default` + `service` procurement type. Implemented `POST /resolve` endpoint + pure lib function. FK reversal across bom/routing. 12 missing events added. Migrations regenerated. 204 tests passing (was 186) |
 
 ### Reusable Utilities
 

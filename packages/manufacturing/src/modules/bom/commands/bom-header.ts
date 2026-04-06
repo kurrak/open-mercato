@@ -30,7 +30,6 @@ type BomHeaderSnapshot = {
   organizationId: string
   tenantId: string
   productId: string
-  productionMethodId: string | null
   name: string
   bomUsage: string
   isPhantom: boolean
@@ -47,7 +46,6 @@ function snapshotBomHeader(record: BomHeader): BomHeaderSnapshot {
     organizationId: record.organizationId,
     tenantId: record.tenantId,
     productId: record.productId,
-    productionMethodId: record.productionMethodId ?? null,
     name: record.name,
     bomUsage: record.bomUsage,
     isPhantom: record.isPhantom,
@@ -67,7 +65,6 @@ const createBomHeaderCommand: CommandHandler<BomHeaderCreateInput, { bomHeaderId
       organizationId: parsed.organizationId,
       tenantId: parsed.tenantId,
       productId: parsed.productId,
-      productionMethodId: parsed.productionMethodId ?? null,
       name: parsed.name,
       bomUsage: parsed.bomUsage ?? 'production',
       isPhantom: parsed.isPhantom ?? false,
@@ -142,7 +139,7 @@ const updateBomHeaderCommand: CommandHandler<BomHeaderUpdateInput, { bomHeaderId
     }
 
     const allChanges = buildChanges(record as unknown as Record<string, unknown>, parsed, [
-      'name', 'bomUsage', 'isPhantom', 'isActive', 'version', 'notes', 'productionMethodId',
+      'name', 'bomUsage', 'isPhantom', 'isActive', 'version', 'notes',
     ])
     const changes = Object.fromEntries(
       Object.entries(allChanges).filter(([, c]) => c.to !== undefined),
@@ -207,7 +204,6 @@ const updateBomHeaderCommand: CommandHandler<BomHeaderUpdateInput, { bomHeaderId
       isActive: before.isActive,
       version: before.version,
       notes: before.notes,
-      productionMethodId: before.productionMethodId,
       updatedAt: new Date(),
     })
     await em.flush()

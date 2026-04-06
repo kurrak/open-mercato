@@ -20,10 +20,6 @@ import {
   name: 'manufacturing_bom_org_product_active_idx',
   properties: ['organizationId', 'productId', 'isActive'],
 })
-@Index({
-  name: 'manufacturing_bom_org_pm_idx',
-  properties: ['organizationId', 'productionMethodId'],
-})
 export class BomHeader {
   [OptionalProps]?: 'bomUsage' | 'isPhantom' | 'isActive' | 'version' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
@@ -38,9 +34,6 @@ export class BomHeader {
 
   @Property({ name: 'product_id', type: 'uuid' })
   productId!: string
-
-  @Property({ name: 'production_method_id', type: 'uuid', nullable: true })
-  productionMethodId?: string | null
 
   @Property({ type: 'varchar', length: 255 })
   name!: string

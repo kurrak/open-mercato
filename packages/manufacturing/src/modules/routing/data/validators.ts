@@ -81,7 +81,6 @@ export type WorkCenterUpdateInput = z.infer<typeof workCenterUpdateSchema>
 
 export const routingTemplateCreateSchema = scopedSchema.extend({
   productId: uuid(),
-  productionMethodId: uuid().nullable().optional(),
   name: z.string().trim().min(1).max(255),
   isActive: z.boolean().optional(),
   version: z.number().int().min(1).optional(),
@@ -90,7 +89,6 @@ export const routingTemplateCreateSchema = scopedSchema.extend({
 
 export const routingTemplateUpdateSchema = z.object({ id: uuid() }).merge(
   scopedSchema.extend({
-    productionMethodId: uuid().nullable(),
     name: z.string().trim().min(1).max(255),
     isActive: z.boolean(),
     version: z.number().int().min(1),

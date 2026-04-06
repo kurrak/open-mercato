@@ -1,6 +1,7 @@
 import {
   unitOfMeasureCreateSchema,
   unitOfMeasureUpdateSchema,
+  productMfgExtensionUpdateSchema,
   productionMethodCreateSchema,
   productionMethodUpdateSchema,
   supplierInfoCreateSchema,
@@ -58,6 +59,42 @@ describe('UnitOfMeasure validators', () => {
       name: 'Updated Name',
     })
     expect(result.success).toBe(true)
+  })
+})
+
+describe('ProductManufacturingExtension validators', () => {
+  it('accepts service procurement type', () => {
+    const result = productMfgExtensionUpdateSchema.safeParse({
+      id: validUuid,
+      procurementType: 'service',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts isPhantomDefault boolean', () => {
+    const result = productMfgExtensionUpdateSchema.safeParse({
+      id: validUuid,
+      isPhantomDefault: true,
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects invalid procurement type', () => {
+    const result = productMfgExtensionUpdateSchema.safeParse({
+      id: validUuid,
+      procurementType: 'invalid',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts all valid procurement types', () => {
+    for (const type of ['buy', 'make', 'buy_and_make', 'service']) {
+      const result = productMfgExtensionUpdateSchema.safeParse({
+        id: validUuid,
+        procurementType: type,
+      })
+      expect(result.success).toBe(true)
+    }
   })
 })
 
