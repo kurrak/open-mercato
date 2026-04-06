@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress (review fixes pending — Phase E) |
 | **Created** | 2026-04-03 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `product_master`) |
@@ -15,7 +15,7 @@
 
 **Key Points:**
 - Create the `packages/manufacturing` package scaffold and its first module (`product_master`)
-- Extend CatalogProduct with manufacturing fields via a separate extension entity (3 fields in Phase 1: `configuration_type`, `procurement_type`, `base_uom_id`)
+- Extend CatalogProduct with manufacturing fields via a separate extension entity (4 fields: `configuration_type`, `procurement_type`, `base_uom_id`, `is_phantom_default`)
 - Add 4 new entities: ProductionMethod (BOM↔Routing bridge), UnitOfMeasure (master catalog), SupplierInfo (vendor per material), UomConversion (per-product unit conversions)
 - Add a response enricher on CatalogProduct for manufacturing summary
 - Register widget injection spots in the catalog product detail page for BOM/routing/configurator tabs (slots filled by sub-specs b/c/d)
@@ -92,8 +92,9 @@ Extension entity linked 1:1 to CatalogProduct via `EntityExtension` pattern.
 | `tenant_id` | VARCHAR | NOT NULL | — | Tenant scoping |
 | `product_id` | UUID | NOT NULL | — | FK to catalog_product.id (UNIQUE — 1:1) |
 | `configuration_type` | ENUM('none','variant_based','rule_based') | NOT NULL | 'none' | How variants/config are handled |
-| `procurement_type` | ENUM('buy','make','buy_and_make') | NOT NULL | 'buy' | Make vs buy classification |
+| `procurement_type` | ENUM('buy','make','buy_and_make','service') | NOT NULL | 'buy' | Make vs buy classification. `service` = external service/subcontracting (reserved for future, distinguishes purchased services from purchased materials) |
 | `base_uom_id` | UUID | NOT NULL | — | FK to UnitOfMeasure.id (ORM relation). Intentional exception to Graceful Incompleteness: base unit is required because all quantities (BOM lines, conversions, inventory) depend on it — cannot be deferred |
+| `is_phantom_default` | BOOLEAN | NOT NULL | false | UX convenience: when creating a new BomHeader for this product, pre-fill `BomHeader.is_phantom` with this value. Authoritative flag remains on BomHeader (can override per BOM). Saves manual setting for products that are always phantom (e.g., hardware kits) |
 | `created_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `deleted_at` | TIMESTAMPTZ | nullable | null | Soft delete |
@@ -194,8 +195,8 @@ Vendor-per-material master data. Multiple suppliers per product, one preferred.
 | `valid_to` | DATE | nullable | null | Price validity end |
 | `variant_id` | UUID | nullable | null | FK to CatalogProductVariant if supplier is variant-specific |
 | `notes` | TEXT | nullable | null | — |
-| `last_purchase_price` | NUMERIC(18,4) | nullable | null | Auto-updated from PO (Phase 3) |
-| `last_purchase_date` | DATE | nullable | null | Auto-updated from PO (Phase 3) |
+| `last_purchase_price` | NUMERIC(18,4) | nullable | null | Auto-updated from PO when purchasing module is implemented |
+| `last_purchase_date` | DATE | nullable | null | Auto-updated from PO when purchasing module is implemented |
 | `created_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `deleted_at` | TIMESTAMPTZ | nullable | null | Soft delete |
@@ -260,6 +261,20 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 - `POST /api/manufacturing/uom-conversion` — Create
 - `PUT /api/manufacturing/uom-conversion/:id` — Update
 - `DELETE /api/manufacturing/uom-conversion/:id` — Soft delete
+
+### Production Method Resolution
+
+- `POST /api/manufacturing/production-method/resolve` — Resolve best PM for a product given variant conditions
+  - Request: `{ productId: string, variantConditions?: Record<string, string[]> }`
+  - Response: `{ productionMethod: ProductionMethod | null, fallback: 'variant_match' | 'default' | 'none', warnings: string[] }`
+  - Resolution logic (pure function in `lib/resolve-production-method.ts`):
+    1. Load active PMs for product (`lifecycle_state = 'active'`)
+    2. If `variantConditions` provided: find PM whose `variant_condition` matches (same AND-match logic as BOM explosion)
+    3. If no variant match: fall back to `is_default = true` PM
+    4. If no default: return null with warning "No matching production method"
+  - ACL: requires `product_master.view` (read-only operation)
+  - Route file must export `openApi` (per AGENTS.md rule)
+  - Used by: BOM explosion flow (UI chains resolve → get BOM → explode), future work order creation
 
 ### Response Enricher
 
@@ -403,9 +418,9 @@ defaultRoleFeatures: {
 #### Supplier Without Vendor Entity
 - **Scenario**: SupplierInfo.supplier_name is a string, not FK to a vendor master. Different products reference same vendor by different string spellings
 - **Severity**: Low
-- **Affected area**: Reporting, supplier consolidation in purchasing (Phase 3)
+- **Affected area**: Reporting, supplier consolidation when purchasing module is added
 - **Mitigation**: `supplier_id` nullable FK ready for future vendor entity. `supplier_name` serves as human-readable label now. Deduplication can be done when vendor module lands
-- **Residual risk**: Minor data quality issue until vendor module exists. Acceptable for Phase 1
+- **Residual risk**: Minor data quality issue until vendor module exists. Acceptable for initial implementation
 
 #### Extension Table Migration Ordering
 - **Scenario**: Manufacturing migration references `catalog_product.id` before catalog migrations run
@@ -467,6 +482,7 @@ defaultRoleFeatures: {
 | Phase B — CRUD APIs + Subscribers | Done | 2026-04-04 | 4 CRUD routes with makeCrudRoute + OpenAPI, 12 commands with undo, product deletion subscriber |
 | Phase C — Extension + Enricher + Widgets | Done | 2026-04-04 | Manufacturing summary enricher on catalog.product, widget injection spots, dashboard page |
 | Phase D — Tests | Done | 2026-04-04 | 57 unit tests (validators, module structure, entity defaults, UoM conversion math). Build passes |
+| Phase E — Review fixes | Pending | — | Add `is_phantom_default` field to extension entity + validator. Add `service` to procurement_type enum. Implement `POST /api/manufacturing/production-method/resolve` endpoint + `lib/resolve-production-method.ts`. Remove `production_method_id` from BomHeader and RoutingTemplate entities/validators (FK direction reversal — PM owns both FKs). Add missing events (bom_line_variant, factory_zone, operation_template_variant, operation_dependency). DB wipe + regenerate all manufacturing package migrations (all 4 modules affected: product_master gets is_phantom_default, bom loses production_method_id, routing loses production_method_id, configurator unchanged but regenerated for consistency) |
 
 ### Reusable Utilities
 
@@ -479,6 +495,9 @@ defaultRoleFeatures: {
 ---
 
 ## Changelog
+
+### 2026-04-06
+- Review fixes: added is_phantom_default field, service procurement type, production-method resolve endpoint (POST with ACL product_master.view + openApi export). Added Phase E for pending code changes. Status → In Progress
 
 ### 2026-04-04
 - Implementation complete. All 4 phases done. 57 unit tests. Added `lib/uom-conversion.ts` pure utility for quantity conversion (direct + reverse lookup, factor validation). Fixed Zod v4 `z.record(z.unknown())` incompatibility → `z.record(z.string(), z.unknown())`

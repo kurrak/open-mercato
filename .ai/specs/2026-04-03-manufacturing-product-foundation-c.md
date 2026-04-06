@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress (review fixes pending) |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `routing`) |
@@ -32,7 +32,7 @@
 
 **Concerns:**
 - DAG validation must handle concurrent edits gracefully (parallel additions that create cycles)
-- `WorkCenter.shift_calendar_id` is nullable FK to future `packages/calendar` — cross-package, wired in Phase 3
+- `WorkCenter.shift_calendar_id` is nullable FK to future `packages/calendar` — cross-package, wired when calendar package is implemented
 - After both b and c land, `BomLine.operation_template_id` (in BOM module) can be wired to OperationTemplate (in this module)
 
 ---
@@ -53,7 +53,7 @@ The routing uses a Template → Variant Override pattern:
 
 2. **Sequential numbering insufficient.** Real manufacturing has parallel paths. A sofa has 6 sub-assemblies produced simultaneously (seat, backrest, sides, frame, covers, upholstery) that all converge at a final assembly operation. Linear sequence numbers (10, 20, 30) cannot express "operations A, B, C, D, E all finish before F starts."
 
-3. **No work center master data.** OM has no concept of physical workstations, their capacity, efficiency, or cost rates. This is needed for scheduling (Phase 3), costing (Phase 4), and shop floor execution.
+3. **No work center master data.** OM has no concept of physical workstations, their capacity, efficiency, or cost rates. This is needed for scheduling, costing, and shop floor execution.
 
 4. **No variant-specific operation parameters.** Different product variants may require different processing times, different work centers, or different labor rates for the same operation. Without variant overrides, each variant needs a complete separate routing — data duplication that's unmaintainable.
 
@@ -69,7 +69,7 @@ Add a `routing` module within `packages/manufacturing` with 6 entities, a DAG va
 | 2 | Time model | **5 components per operation** | Setup, run, teardown are work-center occupation time. Queue, wait+move are non-occupation time. Scheduling needs both. Simpler models (just "run time") can't distinguish "machine is busy" from "part is drying" |
 | 3 | Variant overrides | **OperationTemplateVariant with XOR dual mode** | Same pattern as BomLineVariant (sub-spec b): variant_id XOR variant_condition. Null override fields = inherit from base OperationTemplate |
 | 4 | Payment types | **3 models: hourly, piecework, base+piecework** | Piecework is standard in discrete manufacturing (especially upholstery/assembly). Hourly for machine operations. Mixed for operations with guaranteed base + performance bonus |
-| 5 | WorkCenter calendar FK | **Nullable FK to future packages/calendar** | Calendar not built until Phase 3. FK ready for wiring. Scheduling without calendar = assumes 24/7 (acceptable for Phase 1) |
+| 5 | WorkCenter calendar FK | **Nullable FK to future packages/calendar** | Calendar not yet built. FK ready for wiring when calendar package is implemented. Scheduling without calendar = assumes 24/7 |
 
 ## Data Models
 
@@ -90,7 +90,7 @@ Physical workstation or machine where operations happen.
 | `scheduling_mode` | ENUM('finite','infinite') | NOT NULL | 'infinite' | Infinite = no capacity checking (schedules freely). Finite = respects capacity limits. Start with infinite |
 | `shift_calendar_id` | UUID | nullable | null | FK to future ShiftCalendar in packages/calendar (cross-package, UUID). Nullable until calendar module exists |
 | `default_hourly_rate` | NUMERIC(18,4) | nullable | null | Default labor rate per hour for this work center. Nullable per Graceful Incompleteness |
-| `overhead_rate_per_hour` | NUMERIC(18,4) | nullable | null | Machine/facility overhead per hour (depreciation, energy, tools). Used by costing module (Phase 4) |
+| `overhead_rate_per_hour` | NUMERIC(18,4) | nullable | null | Machine/facility overhead per hour (depreciation, energy, tools). Used by future costing module |
 | `is_active` | BOOLEAN | NOT NULL | true | Soft toggle |
 | `notes` | TEXT | nullable | null | — |
 | `created_at` | TIMESTAMPTZ | NOT NULL | now() | — |
@@ -129,7 +129,7 @@ Production routing for a product element. Linked to ProductionMethod by UUID FK 
 | `organization_id` | VARCHAR | NOT NULL | — | Tenant scoping |
 | `tenant_id` | VARCHAR | NOT NULL | — | Tenant scoping |
 | `product_id` | UUID | NOT NULL | — | FK to CatalogProduct (cross-package, UUID). Which product/sub-assembly this routing is for |
-| `production_method_id` | UUID | nullable | null | FK to ProductionMethod (cross-module, UUID). Nullable per Graceful Incompleteness — routing can exist before PM link |
+<!-- production_method_id REMOVED — PM owns the FK to RoutingTemplate, not the reverse. Query PM→Routing via ProductionMethod.routing_template_id. See review finding #4. -->
 | `name` | VARCHAR(255) | NOT NULL | — | Human label (e.g., "Seat assembly routing", "Cover sewing routing") |
 | `is_active` | BOOLEAN | NOT NULL | true | Soft toggle |
 | `version` | INTEGER | NOT NULL | 1 | Version number for change tracking |
@@ -138,7 +138,7 @@ Production routing for a product element. Linked to ProductionMethod by UUID FK 
 | `updated_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `deleted_at` | TIMESTAMPTZ | nullable | null | Soft delete |
 
-**Indexes:** `(organization_id, product_id)` for product→routing lookup. `(organization_id, production_method_id)` for PM→routing resolution.
+**Indexes:** `(organization_id, product_id)` for product→routing lookup.
 
 ### OperationTemplate
 
@@ -162,10 +162,10 @@ Single operation within a routing. ORM relation to parent RoutingTemplate and to
 | `payment_type` | ENUM('hourly','piecework','base_plus_piecework') | NOT NULL | 'hourly' | Labor cost calculation model |
 | `piecework_rate` | NUMERIC(18,4) | nullable | null | Rate per piece (used when payment_type includes piecework) |
 | `hourly_rate` | NUMERIC(18,4) | nullable | null | Rate per hour (used when payment_type includes hourly) |
-| `is_subcontracted` | BOOLEAN | NOT NULL | false | Operation performed by external vendor (subcontracting module, Phase 5) |
+| `is_subcontracted` | BOOLEAN | NOT NULL | false | Operation performed by external vendor (future subcontracting module) |
 | `allow_splitting` | BOOLEAN | NOT NULL | false | Can this operation be split across multiple work centers/machines? |
 | `max_splits` | INTEGER | nullable | null | Max parallel splits (null = unlimited when allow_splitting=true) |
-| `setup_group` | VARCHAR(50) | nullable | null | Changeover group for setup matrix (Phase 5: SetupMatrixRule). Operations in same group share setup |
+| `setup_group` | VARCHAR(50) | nullable | null | Changeover group for future setup matrix (SetupMatrixRule). Operations in same group share setup time |
 | `instructions` | TEXT | nullable | null | Quick instruction notes for operators. Short text, not full documentation |
 | `notes` | TEXT | nullable | null | — |
 | `created_at` | TIMESTAMPTZ | NOT NULL | now() | — |
@@ -321,7 +321,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 - `DELETE /api/manufacturing/factory-zone/:id` — Soft delete
 
 ### Routing Template
-- `GET /api/manufacturing/routing` — List (filtered by product_id, production_method_id, is_active)
+- `GET /api/manufacturing/routing` — List (filtered by product_id, is_active)
 - `GET /api/manufacturing/routing/:id` — Detail (includes nested operations and dependencies)
 - `POST /api/manufacturing/routing` — Create
 - `PUT /api/manufacturing/routing/:id` — Update
@@ -391,6 +391,15 @@ const events = [
   { id: 'routing.work_center.created', label: 'Work Center Created', entity: 'work_center', category: 'crud' },
   { id: 'routing.work_center.updated', label: 'Work Center Updated', entity: 'work_center', category: 'crud' },
   { id: 'routing.work_center.deleted', label: 'Work Center Deleted', entity: 'work_center', category: 'crud' },
+  { id: 'routing.factory_zone.created', label: 'Factory Zone Created', entity: 'factory_zone', category: 'crud' },
+  { id: 'routing.factory_zone.updated', label: 'Factory Zone Updated', entity: 'factory_zone', category: 'crud' },
+  { id: 'routing.factory_zone.deleted', label: 'Factory Zone Deleted', entity: 'factory_zone', category: 'crud' },
+  { id: 'routing.operation_template_variant.created', label: 'Operation Variant Created', entity: 'operation_template_variant', category: 'crud' },
+  { id: 'routing.operation_template_variant.updated', label: 'Operation Variant Updated', entity: 'operation_template_variant', category: 'crud' },
+  { id: 'routing.operation_template_variant.deleted', label: 'Operation Variant Deleted', entity: 'operation_template_variant', category: 'crud' },
+  { id: 'routing.operation_dependency.created', label: 'Dependency Created', entity: 'operation_dependency', category: 'crud' },
+  { id: 'routing.operation_dependency.updated', label: 'Dependency Updated', entity: 'operation_dependency', category: 'crud' },
+  { id: 'routing.operation_dependency.deleted', label: 'Dependency Deleted', entity: 'operation_dependency', category: 'crud' },
 ] as const
 ```
 
@@ -472,7 +481,7 @@ defaultRoleFeatures: {
 - **Severity**: Low
 - **Affected area**: Data integrity of operation dependency graph
 - **Mitigation**: DAG validation runs on every dependency save (not just on explicit validation endpoint). Transaction isolation ensures the second save sees the first's committed dependency. If race condition occurs, the graph is invalid but will be caught on next validation or time-rollup request
-- **Residual risk**: Brief window of invalid graph. Acceptable — no downstream consumer in Phase 1 (scheduling is Phase 3)
+- **Residual risk**: Brief window of invalid graph. Acceptable — no downstream consumer yet (scheduling module not implemented)
 
 #### WorkCenter Deletion With Referenced Operations
 - **Scenario**: User deletes a WorkCenter that has OperationTemplates referencing it
@@ -499,7 +508,7 @@ defaultRoleFeatures: {
 
 | Rule Source | Rule | Status | Notes |
 |---|---|---|---|
-| root AGENTS.md | No direct ORM relationships between modules | Compliant | ORM relations within routing module only. Cross-module refs (product_id, production_method_id, shift_calendar_id) use UUID strings |
+| root AGENTS.md | No direct ORM relationships between modules | Compliant | ORM relations within routing module only. Cross-module refs (product_id, shift_calendar_id) use UUID strings. PM→Routing link owned by ProductionMethod, not RoutingTemplate |
 | root AGENTS.md | Filter by organization_id | Compliant | All entities have organization_id + tenant_id |
 | root AGENTS.md | Validate inputs with Zod | Compliant | data/validators.ts with XOR on OperationTemplateVariant, overlap exclusivity on dependency |
 | root AGENTS.md | API routes MUST export openApi | Compliant | Via makeCrudRoute + custom endpoints with explicit openApi |
@@ -531,10 +540,14 @@ defaultRoleFeatures: {
 | Phase A — Work Centers + Entities | Done | 2026-04-04 | 6 entities, 17 commands, 6 CRUD routes, migration |
 | Phase B — DAG Validation + Time Rollup | Done | 2026-04-04 | Pure DAG validation (Kahn's algo), time rollup with critical path, 2 custom endpoints |
 | Phase C — Widget + Tests | Done | 2026-04-04 | RoutingTab placeholder, 31 new tests (DAG: 10, time rollup: 8, validators: 13). Total package: 136 tests |
+| Review fixes | Pending | — | Remove `production_method_id` from RoutingTemplate entity + validator. Add factory_zone, operation_template_variant, operation_dependency CRUD events. DB wipe + regenerate migration |
 
 ---
 
 ## Changelog
+
+### 2026-04-06
+- Review fixes: removed production_method_id from RoutingTemplate (FK direction reversal — PM owns routing_template_id). Added factory_zone, operation_template_variant, operation_dependency CRUD events. Status → In Progress
 
 ### 2026-04-05
 - OperationDependency changed from hard-delete to soft-delete with standard undo. OM convention requires every command to be undoable. DAG validation updated to exclude soft-deleted dependencies

@@ -29,7 +29,7 @@
 
 **Concerns:**
 - Only applies to `rule_based` products (`configuration_type = 'rule_based'` on ProductManufacturingExtension). For `variant_based` products, OM's CatalogProductVariant is used directly — no configurator needed
-- PriceAdjustment (configuration-dependent pricing) deferred to Phase 3 — this sub-spec handles BOM/routing resolution only
+- PriceAdjustment (configuration-dependent pricing) deferred until sales integration — this sub-spec handles BOM/routing resolution only
 - Constraint engine uses simple JSON list evaluation (~300 rule limit). Expression engine / solver is a future enhancement
 - Namespace rule creates a cross-module coupling: configurator defines the names, BOM and routing consume them. Changes to attribute names require updating variant_conditions
 
@@ -68,7 +68,7 @@ Add a `configurator` module with ConfigAttribute and ConstraintRule entities, a 
 
 | # | Decision | Resolution | Rationale |
 |---|---|---|---|
-| 1 | Configurator scope in Phase 1 | **BOM/routing resolution only — no pricing** | PriceAdjustment deferred to Phase 3 (sales extensions). Configurator resolves which BOM lines and routing overrides apply. Pricing layer is meaningless without sales order lines to consume it |
+| 1 | Configurator scope | **BOM/routing resolution only — no pricing** | PriceAdjustment deferred until sales integration. Configurator resolves which BOM lines and routing overrides apply. Pricing layer is meaningless without sales order lines to consume it |
 | 2 | Constraint engine | **Simple JSON list evaluation** | Evaluate rules by iterating sorted by priority, checking condition_json matches against current selections. O(n) per evaluation, <100ms for ~300 rules. Sufficient for target scale. Expression engine / solver = future enhancement |
 | 3 | Configuration snapshot format | **Flat JSONB: `{"attribute_key": "selected_value"}`** | Keys = ConfigAttribute.key. Values = selected option. Metadata fields prefixed with `_` (e.g., `_resolved_at`). Same format used everywhere: resolution input, BOM explosion input, storage on future SalesOrderLine/WorkOrder |
 | 4 | Namespace rule enforcement | **Application-level validation on BomLine/OperationTemplateVariant save** | When saving a BomLine or OperationTemplateVariant with `variant_condition`, validate that keys match existing ConfigAttribute.key values for that product. Warn (not block) if attribute doesn't exist yet — Graceful Incompleteness allows building BOM before configurator |
@@ -297,7 +297,7 @@ defaultRoleFeatures: {
 1. Create `src/modules/configurator/` with: `index.ts`, `acl.ts`, `events.ts`, `setup.ts`, `di.ts`, `search.ts`, `translations.ts`
 2. Create `data/entities.ts` with ConfigAttribute, ConstraintRule (no ORM relations between them — both FK to CatalogProduct by UUID)
 3. Create `data/validators.ts` with Zod schemas. ConfigAttribute: validate attribute_type values, allowed_values shape per type, UNIQUE name per product. ConstraintRule: validate condition_json and action_data shapes per action_type
-4. Create `translations.ts` declaring translatable fields: ConfigAttribute.label, ConfigAttribute.attribute_group, ConstraintRule.description. Zero runtime cost if no translations exist — ready for multi-locale when sales-facing configurator UI lands (Phase 3)
+4. Create `translations.ts` declaring translatable fields: ConfigAttribute.label, ConfigAttribute.attribute_group, ConstraintRule.description. Zero runtime cost if no translations exist — ready for multi-locale when sales-facing configurator UI is needed
 5. Create `search.ts` with searchConfig for ConfigAttribute (by name, product, attribute_group)
 6. Hand-write migrations for config_attribute and constraint_rule tables. Follow migration playbook (known db:generate bug for external packages)
 7. Create CRUD routes for config-attribute and constraint-rule under `api/manufacturing/`. All queries use `findWithDecryption`. All mutations use `validateCrudMutationGuard`
@@ -357,7 +357,7 @@ defaultRoleFeatures: {
 - **Scenario**: User renames ConfigAttribute.key from "seat_type" to "seat_model". All BomLines and OperationTemplateVariants with `variant_condition: {"seat_type": [...]}` are now orphaned — key doesn't match any attribute
 - **Severity**: Medium
 - **Affected area**: BOM explosion (lines with stale keys silently skipped), routing variant overrides
-- **Mitigation**: On ConfigAttribute.key update, query all BomLines and OperationTemplateVariants in the same product that use the old key in variant_condition. Return a warning with count of affected records. UI shows "N BOM lines and M routing overrides reference the old key — update them?" Consider making key immutable after first use (require delete + re-create to change). Future: ECM module (Phase 5) handles this via ChangeOrder
+- **Mitigation**: On ConfigAttribute.key update, query all BomLines and OperationTemplateVariants in the same product that use the old key in variant_condition. Return a warning with count of affected records. UI shows "N BOM lines and M routing overrides reference the old key — update them?" Consider making key immutable after first use (require delete + re-create to change). Future: ECM module will handle this via ChangeOrder when implemented
 - **Residual risk**: If user ignores the warning, stale keys persist until manually fixed. Acceptable — same risk as renaming any reference data
 
 #### material Attribute Type Depends on Catalog Data
@@ -419,7 +419,7 @@ defaultRoleFeatures: {
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-05 | All module files, entities, validators, commands, CRUD routes, events, ACL, setup, search, translations, DI |
 | Phase B — Resolution Engine + Namespace Validation | Done | 2026-04-05 | config-resolution.ts pure function, resolve endpoint, namespace-validator.ts, validate-namespace endpoint |
-| Phase C — UI Widget + Tests | Partial | 2026-04-05 | Unit tests done (50 passing). Migration written. UI widget deferred to Phase 3 |
+| Phase C — UI Widget + Tests | Partial | 2026-04-05 | Unit tests done (50 passing). Migration written. UI widget deferred to manufacturing-ui spec |
 
 ### Phase A — Detailed Progress
 - [x] Step 1: Create `src/modules/configurator/` with index.ts, acl.ts, events.ts, setup.ts, di.ts, search.ts, translations.ts
@@ -448,8 +448,11 @@ defaultRoleFeatures: {
 
 ## Changelog
 
+### 2026-04-06
+- Wording improvements throughout
+
 ### 2026-04-05
 - Implemented Phases A, B, C (backend). 50 unit tests passing. Migration hand-written. UI widget deferred.
 
 ### 2026-04-04
-- Initial sub-spec. 2 entities (ConfigAttribute, ConstraintRule). Configuration resolution engine with constraint evaluation and cascading. Namespace rule enforcement. 3-phase implementation plan. Completes Phase 1 spec family (a→d)
+- Initial sub-spec. 2 entities (ConfigAttribute, ConstraintRule). Configuration resolution engine with constraint evaluation and cascading. Namespace rule enforcement. 3-phase implementation plan. Completes the product foundation spec family (a→d)

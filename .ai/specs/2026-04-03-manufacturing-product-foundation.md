@@ -23,7 +23,7 @@
 
 **Scope:**
 - New package: `@open-mercato/manufacturing`
-- 3 product extension fields on CatalogProduct (configuration_type, procurement_type, base_uom)
+- 4 product extension fields on CatalogProduct (configuration_type, procurement_type, base_uom_id, is_phantom_default)
 - 16 new entities + 1 extended across 4 increments: product_master (5 new + 1 extension), BOM (3), routing (6), configurator (2)
 - BOM explosion algorithm with phantom pass-through and variant-conditional resolution
 - Operation dependency graph (DAG) for parallel manufacturing paths
@@ -89,7 +89,7 @@ Each domain is a separate OM module within `packages/manufacturing`. Each module
 packages/manufacturing/
   src/
     modules/
-      product_master/                   # ── Product Master (Phase 1, Increment 1)
+      product_master/                   # ── Product Master (Increment 1)
         index.ts                        #    Module metadata
         acl.ts                          #    product_master.view, product_master.edit
         events.ts                       #    product_master.production_method.*, product_master.supplier_info.*, etc.
@@ -110,7 +110,7 @@ packages/manufacturing/
           injection/                    #    Product detail widget injection spots
           injection-table.ts
 
-      bom/                              # ── Bill of Materials (Phase 1, Increment 2)
+      bom/                              # ── Bill of Materials (Increment 2)
         index.ts
         acl.ts                          #    bom.view, bom.create, bom.update, bom.delete, bom.explode
         events.ts                       #    bom.bom_header.*, bom.explosion.completed
@@ -128,7 +128,7 @@ packages/manufacturing/
         backend/
           products/BomTab.tsx           #    Widget injected into product detail
 
-      routing/                          # ── Routing & Work Centers (Phase 1, Increment 3)
+      routing/                          # ── Routing & Work Centers (Increment 3)
         index.ts
         acl.ts                          #    routing.view, routing.create, routing.update, routing.delete
         events.ts                       #    routing.routing_template.*, routing.work_center.*
@@ -146,7 +146,7 @@ packages/manufacturing/
         backend/
           products/RoutingTab.tsx       #    Widget injected into product detail
 
-      configurator/                     # ── Product Configurator (Phase 1, Increment 4)
+      configurator/                     # ── Product Configurator (Increment 4)
         index.ts
         acl.ts                          #    configurator.view, configurator.edit
         events.ts                       #    configurator.config_attribute.*, configurator.constraint_rule.*
@@ -163,7 +163,7 @@ packages/manufacturing/
         backend/
           products/ConfiguratorTab.tsx   #    Widget injected into product detail
 
-      # ── Future modules (Phase 3–5, defined in later specs)
+      # ── Future modules (defined in later specs when needed)
       # production_orders/              #    WorkOrder, WorkOrderOperation, LaborEntry, ...
       # mrp/                            #    PlannedOrder, MrpRun
       # costing/                        #    CostEstimate, CostEstimateLine, ...
@@ -175,7 +175,7 @@ packages/manufacturing/
 
 | UMES Mechanism | Module | Usage |
 |---|---|---|
-| Entity extension (`data/extensions.ts`) | product_master | 3 fields on CatalogProduct (configuration_type, procurement_type, base_uom) via separate extension table |
+| Entity extension (`data/extensions.ts`) | product_master | 4 fields on CatalogProduct (configuration_type, procurement_type, base_uom_id, is_phantom_default) via separate extension table |
 | Widget injection (`widgets/injection/`) | product_master | Product detail injection spots. BOM, routing, configurator modules inject their tabs into these spots |
 | Response enricher (`data/enrichers.ts`) | product_master | Manufacturing summary on CatalogProduct API responses (has_bom, has_routing, production_method_count) |
 | Events (`events.ts`) | each module | Per-module event declarations: bom module declares `bom.*`, routing declares `routing.*`, product_master declares `product_master.*`, configurator declares `configurator.*`. Module name = event prefix (OM convention) |
@@ -189,10 +189,12 @@ Module boundaries shown. ORM relations within modules (solid lines), UUID FKs ac
 ┌─ product_master module ────────────────────────────────┐
 │  CatalogProduct (OM) ← [extension] ProductMfgExtension │
 │  ProductionMethod ←── bridge entity                    │
+│    ├─ bom_header_id ──────────→ BomHeader              │
+│    └─ routing_template_id ────→ RoutingTemplate        │
 │  UnitOfMeasure (standalone master catalog)             │
-└───────────┬──────────────────┬─────────────────────────┘
-            │ UUID FK          │ UUID FK
-┌───────────▼──────────┐  ┌───▼──────────────────────────┐
+└────────────────────────────────────────────────────────┘
+            PM owns FKs pointing into both modules:
+┌──────────────────────┐  ┌──────────────────────────────┐
 │  bom module          │  │  routing module              │
 │  BomHeader           │  │  RoutingTemplate             │
 │    ├─ BomLine ───────│──│─→ OperationTemplate (UUID)   │
@@ -211,15 +213,15 @@ Module boundaries shown. ORM relations within modules (solid lines), UUID FKs ac
 ```
 
 Cross-module UUID FKs:
-- `BomHeader.production_method_id` → ProductionMethod (product_master module)
-- `RoutingTemplate.production_method_id` → ProductionMethod (product_master module)
+- `ProductionMethod.bom_header_id` → BomHeader (bom module) — PM owns this FK, not reverse
+- `ProductionMethod.routing_template_id` → RoutingTemplate (routing module) — PM owns this FK, not reverse
 - `BomLine.operation_template_id` → OperationTemplate (routing module, **nullable**)
 - `BomLine.material_id` → CatalogProduct (OM catalog, cross-package)
 - `ConfigAttribute.product_id` → CatalogProduct (OM catalog, cross-package)
 
 ### Event Namespace
 
-All events use `manufacturing.` prefix with singular entity names:
+All events use module-level prefix with singular entity names (per OM convention `module.entity.action`):
 
 - `product_master.production_method.created|updated|deleted`
 - `product_master.supplier_info.created|updated|deleted`
@@ -227,10 +229,14 @@ All events use `manufacturing.` prefix with singular entity names:
 - `product_master.uom_conversion.created|updated|deleted`
 - `bom.bom_header.created|updated|deleted`
 - `bom.bom_line.created|updated|deleted`
+- `bom.bom_line_variant.created|updated|deleted`
 - `bom.explosion.completed` (payload: product_id, explosion result summary)
 - `routing.routing_template.created|updated|deleted`
 - `routing.operation_template.created|updated|deleted`
+- `routing.operation_template_variant.created|updated|deleted`
+- `routing.operation_dependency.created|updated|deleted`
 - `routing.work_center.created|updated|deleted`
+- `routing.factory_zone.created|updated|deleted`
 - `configurator.config_attribute.created|updated|deleted`
 - `configurator.constraint_rule.created|updated|deleted`
 - `configurator.configuration.resolved` (payload: product_id, resolved config)
@@ -261,7 +267,7 @@ Each sub-spec follows the full OM lifecycle: `spec-writing` → `pre-implement-s
 
 | Sub-Spec | New Entities | Extended Entities |
 |---|---|---|
-| a | ProductionMethod, UnitOfMeasure, SupplierInfo, UomConversion | CatalogProduct (+3 fields via extension table) |
+| a | ProductionMethod, UnitOfMeasure, SupplierInfo, UomConversion | CatalogProduct (+4 fields via extension table) |
 | b | BomHeader, BomLine, BomLineVariant | — |
 | c | RoutingTemplate, OperationTemplate, OperationTemplateVariant, OperationDependency, WorkCenter, FactoryZone | — |
 | d | ConfigAttribute, ConstraintRule | BomLine (config resolution drives line activation), OperationTemplateVariant (variant override resolution) |
@@ -304,9 +310,9 @@ All CRUD routes use `makeCrudRoute` with `openApi` export. Custom endpoints use 
 
 ## Scope Boundaries
 
-### In Scope (Phase 1)
+### In Scope
 
-- Product manufacturing extensions (3 fields)
+- Product manufacturing extensions (4 fields: configuration_type, procurement_type, base_uom_id, is_phantom_default)
 - ProductionMethod (BOM↔Routing bridge)
 - SupplierInfo (vendor per material — completes "what, how, where from" product definition)
 - UomConversion (per-product unit conversions)
@@ -436,7 +442,7 @@ Key integration test: full product card end-to-end — product → production me
 | packages/core AGENTS.md | setup.ts: declare defaultRoleFeatures when adding features | Compliant | setup.ts seeds manufacturing features with admin/manager defaults |
 | packages/core AGENTS.md | Entity extensions via data/extensions.ts | Compliant | ProductManufacturingExtension links to CatalogProduct |
 | packages/core AGENTS.md | Widget injection via widgets/injection/ + injection-table.ts | Compliant | BomTab, RoutingTab, ConfiguratorTab registered |
-| packages/core AGENTS.md | Custom fields: use collectCustomFieldValues() | N/A | No custom fields on manufacturing entities in Phase 1 |
+| packages/core AGENTS.md | Custom fields: use collectCustomFieldValues() | N/A | No custom fields on manufacturing entities currently |
 | packages/search AGENTS.md | Search config via search.ts | Compliant | BomHeader, WorkCenter, ProductionMethod searchable |
 
 ### Internal Consistency Check
@@ -488,8 +494,11 @@ Manufacturing terms used in this spec family. OM maintainers: this section is fo
 
 ## Changelog
 
+### 2026-04-06
+- Review fixes: FK direction reversal (PM owns bom_header_id and routing_template_id, BomHeader/RoutingTemplate no longer own reverse FK). Added is_phantom_default and service procurement type to extension entity (4 fields, was 3). Added production-method resolve endpoint. Completed event namespace (12 missing CRUD events added). Wording improvements throughout
+
 ### 2026-04-03
 - Review feedback: added SupplierInfo + UomConversion to product_master (5 entities, was 3). ActionLog as basic change tracking (zero custom work). ProductVariant coverage explicit (OM CatalogProductVariant reused for variant_based). Total entities 18→20
-- Revised to multi-module architecture within single package. 4 modules for Phase 1 (product_master, bom, routing, configurator) + 5 future modules (production_orders, mrp, costing, subcontracting, ecm). Updated package structure, entity dependency graph with module boundaries, extension points per module. Matches OM convention (packages/core has 30+ modules)
+- Revised to multi-module architecture within single package. 4 modules implemented (product_master, bom, routing, configurator) + 5 future modules (production_orders, mrp, costing, subcontracting, ecm). Updated package structure, entity dependency graph with module boundaries, extension points per module. Matches OM convention (packages/core has 30+ modules)
 - Resolved open questions: async BOM explosion, extension table (not EAV). Removed Open Questions block. Promoted to Draft
 - Initial skeleton spec. Multi-part family roadmap with 4 sub-specs (a–d). Architecture, entity graph, API surface, risks, compliance report

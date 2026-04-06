@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress (review fixes pending) |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `bom`) |
@@ -30,7 +30,7 @@
 - Cycle detection on save, max depth on explosion
 
 **Concerns:**
-- BOM explosion is the most algorithmically complex feature in Phase 1 — heavy unit test coverage required
+- BOM explosion is the most algorithmically complex feature in the manufacturing package — heavy unit test coverage required
 - `BomLine.operation_template_id` is a nullable UUID FK to the routing module's OperationTemplate — null until sub-spec c lands
 - variant_condition JSONB keys must match ConfigAttribute names (namespace rule) — enforced at application level, not DB
 
@@ -91,7 +91,7 @@ One per product or sub-assembly. Linked to ProductionMethod (from product_master
 | `organization_id` | VARCHAR | NOT NULL | — | Tenant scoping |
 | `tenant_id` | VARCHAR | NOT NULL | — | Tenant scoping |
 | `product_id` | UUID | NOT NULL | — | FK to CatalogProduct (cross-package, UUID) — which product/sub-assembly this BOM is for |
-| `production_method_id` | UUID | nullable | null | FK to ProductionMethod (cross-module, UUID). Nullable per Graceful Incompleteness — BOM can exist before being linked to a PM |
+<!-- production_method_id REMOVED — PM owns the FK to BomHeader, not the reverse. Query PM→BOM via ProductionMethod.bom_header_id. See review finding #4. -->
 | `name` | VARCHAR(255) | NOT NULL | — | Human label (e.g., "Main BOM", "Seat assembly BOM") |
 | `bom_usage` | VARCHAR(20) | NOT NULL | 'production' | Distinguishes BOM purpose. Values: 'production', 'packaging'. VARCHAR (not ENUM) for extensibility — future usage types (e.g., 'engineering', 'costing') don't require migration. Application-level validation via Zod |
 | `is_phantom` | BOOLEAN | NOT NULL | false | Phantom BOM: components pass through to parent during explosion. No separate work order or inventory. Authoritative flag (not inherited from Product) |
@@ -102,7 +102,7 @@ One per product or sub-assembly. Linked to ProductionMethod (from product_master
 | `updated_at` | TIMESTAMPTZ | NOT NULL | now() | — |
 | `deleted_at` | TIMESTAMPTZ | nullable | null | Soft delete |
 
-**Indexes:** `(organization_id, product_id, is_active)` for active BOM lookup. `(organization_id, production_method_id)` for PM→BOM resolution.
+**Indexes:** `(organization_id, product_id, is_active)` for active BOM lookup.
 
 ### BomLine
 
@@ -251,7 +251,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 
 ### BOM Header
 
-- `GET /api/manufacturing/bom` — List (filtered by product_id, bom_usage, is_active, production_method_id)
+- `GET /api/manufacturing/bom` — List (filtered by product_id, bom_usage, is_active)
 - `GET /api/manufacturing/bom/:id` — Detail (includes nested BomLines and BomLineVariants)
 - `POST /api/manufacturing/bom` — Create
 - `PUT /api/manufacturing/bom/:id` — Update
@@ -311,6 +311,9 @@ const events = [
   { id: 'bom.bom_line.created', label: 'BOM Line Created', entity: 'bom_line', category: 'crud' },
   { id: 'bom.bom_line.updated', label: 'BOM Line Updated', entity: 'bom_line', category: 'crud' },
   { id: 'bom.bom_line.deleted', label: 'BOM Line Deleted', entity: 'bom_line', category: 'crud' },
+  { id: 'bom.bom_line_variant.created', label: 'BOM Line Variant Created', entity: 'bom_line_variant', category: 'crud' },
+  { id: 'bom.bom_line_variant.updated', label: 'BOM Line Variant Updated', entity: 'bom_line_variant', category: 'crud' },
+  { id: 'bom.bom_line_variant.deleted', label: 'BOM Line Variant Deleted', entity: 'bom_line_variant', category: 'crud' },
   { id: 'bom.explosion.completed', label: 'BOM Explosion Completed', entity: 'bom_header', category: 'lifecycle' },
 ] as const
 ```
@@ -350,7 +353,7 @@ defaultRoleFeatures: {
 7. Run `yarn db:generate` and `yarn db:migrate`
 8. Create CRUD routes for: bom, bom-line, bom-line-variant. All entity queries use `findWithDecryption`/`findOneWithDecryption` per OM convention
 9. Cycle detection on BomLine create/update when child_bom_header_id is set. Use `withAtomicFlush` to ensure cycle-detection query sees current state before flush
-10. Where-used query endpoint (single-level: returns direct BomHeader references only, not recursive child traversal — sufficient for Phase 1)
+10. Where-used query endpoint (single-level: returns direct BomHeader references only, not recursive child traversal — recursive where-used is a future enhancement)
 11. Hand-write migrations by extracting `bom_*` statements from `db:generate` output (known db:generate bug for external packages — see migration playbook)
 
 **Testable outcome:** Full CRUD on all 3 entities. Cycle detection rejects circular references. Where-used query returns results.
@@ -414,7 +417,7 @@ defaultRoleFeatures: {
 - **Severity**: Medium
 - **Affected area**: BOM explosion correctness
 - **Mitigation**: Namespace validation at application level — when saving BomLine with variant_condition, validate keys against existing ConfigAttribute names. Warn (not block) if ConfigAttribute doesn't exist yet (Graceful Incompleteness — config may not be defined yet). Sub-spec d (configurator) will add stricter enforcement
-- **Residual risk**: If ConfigAttribute is renamed after BomLines reference it, existing variant_conditions become stale. Future: ECM module (Phase 5) will handle this via ChangeOrder impact analysis
+- **Residual risk**: If ConfigAttribute is renamed after BomLines reference it, existing variant_conditions become stale. Future: ECM module will handle this via ChangeOrder impact analysis when implemented
 
 #### Incomplete BOM Data
 - **Scenario**: BOM exists with lines that have null material_id, null quantities, or no lines at all. User requests explosion
@@ -435,7 +438,7 @@ defaultRoleFeatures: {
 
 | Rule Source | Rule | Status | Notes |
 |---|---|---|---|
-| root AGENTS.md | No direct ORM relationships between modules | Compliant | ORM relations only within bom module (BomHeader↔BomLine↔BomLineVariant). Cross-module refs (material_id, production_method_id, operation_template_id) use UUID strings |
+| root AGENTS.md | No direct ORM relationships between modules | Compliant | ORM relations only within bom module (BomHeader↔BomLine↔BomLineVariant). Cross-module refs (material_id, operation_template_id) use UUID strings. PM→BOM link owned by ProductionMethod, not BomHeader |
 | root AGENTS.md | Filter by organization_id | Compliant | All entities have organization_id + tenant_id |
 | root AGENTS.md | Validate inputs with Zod | Compliant | data/validators.ts with XOR validation on BomLineVariant |
 | root AGENTS.md | API routes MUST export openApi | Compliant | Via makeCrudRoute + explode endpoint with explicit openApi |
@@ -469,10 +472,14 @@ defaultRoleFeatures: {
 | Phase A — Entities + CRUD | Done | 2026-04-04 | 3 entities, 9 commands, 3 CRUD routes, where-used endpoint, cycle detection, migration |
 | Phase B — Explosion + Worker | Done | 2026-04-04 | Pure explosion algorithm, async queue worker with ProgressService, explode endpoint |
 | Phase C — Widget + Tests | Done | 2026-04-04 | BOM tab placeholder, 44 new tests (explosion: 16, validators: 12, cycle detection: 6, variant matching: 8, + product_master: 57). Total: 101 tests |
+| Review fixes | Pending | — | Remove `production_method_id` from BomHeader entity + validator. Add bom_line_variant CRUD events. DB wipe + regenerate migration |
 
 ---
 
 ## Changelog
+
+### 2026-04-06
+- Review fixes: removed production_method_id from BomHeader (FK direction reversal — PM owns bom_header_id). Added bom_line_variant CRUD events. Status → In Progress
 
 ### 2026-04-04
 - Pre-implementation analysis fixes: added Phase 0 (multi-module package registration prerequisite), API route prefix verification note, findWithDecryption + withAtomicFlush in CRUD/cycle detection, ProgressService DI verification note, where-used clarified as single-level, bom_usage changed from ENUM to VARCHAR for extensibility, hand-write migrations note
