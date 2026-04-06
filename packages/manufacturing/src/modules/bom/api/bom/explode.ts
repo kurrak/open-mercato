@@ -38,10 +38,10 @@ export async function POST(req: Request) {
     const progressService = container.resolve('progressService') as ProgressService
     const progressJob = await progressService.createJob(
       {
-        kind: 'bom-explosion',
-        title: 'BOM Explosion',
+        jobType: 'bom-explosion',
+        name: 'BOM Explosion',
         description: `Exploding BOM ${parsed.bomHeaderId}`,
-        totalCount: null,
+        cancellable: false,
       },
       { tenantId: auth.tenantId, organizationId, userId: auth.userId },
     )

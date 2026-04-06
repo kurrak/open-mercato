@@ -2,9 +2,9 @@ import { z } from 'zod'
 import { makeCrudRoute } from '@open-mercato/shared/lib/crud/factory'
 import { resolveCrudRecordId, parseScopedCommandInput } from '@open-mercato/shared/lib/api/scoped'
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
-import { UomConversion } from '../../data/entities'
-import { uomConversionCreateSchema, uomConversionUpdateSchema } from '../../data/validators'
-import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../openapi'
+import { UomConversion } from '../../../data/entities'
+import { uomConversionCreateSchema, uomConversionUpdateSchema } from '../../../data/validators'
+import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../../openapi'
 
 const routeMetadata = {
   GET: { requireAuth: true, requireFeatures: ['product_master.view'] },

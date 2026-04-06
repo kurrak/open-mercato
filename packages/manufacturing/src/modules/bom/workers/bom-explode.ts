@@ -106,7 +106,7 @@ export default async function handle(
     await progressService.completeJob(
       progressJobId,
       {
-        resultJson: {
+        resultSummary: {
           lines: result.lines,
           warnings: result.warnings,
           depth: result.depth,

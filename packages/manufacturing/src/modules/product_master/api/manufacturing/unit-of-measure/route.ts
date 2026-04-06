@@ -4,9 +4,9 @@ import { resolveCrudRecordId, parseScopedCommandInput } from '@open-mercato/shar
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
 import { escapeLikePattern } from '@open-mercato/shared/lib/db/escapeLikePattern'
 import { parseBooleanToken } from '@open-mercato/shared/lib/boolean'
-import { UnitOfMeasure } from '../../data/entities'
-import { unitOfMeasureCreateSchema, unitOfMeasureUpdateSchema } from '../../data/validators'
-import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../openapi'
+import { UnitOfMeasure } from '../../../data/entities'
+import { unitOfMeasureCreateSchema, unitOfMeasureUpdateSchema } from '../../../data/validators'
+import { createManufacturingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../../openapi'
 
 const routeMetadata = {
   GET: { requireAuth: true, requireFeatures: ['product_master.view'] },
