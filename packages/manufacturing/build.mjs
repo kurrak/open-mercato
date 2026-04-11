@@ -24,7 +24,7 @@ const addJsExtension = {
   setup(build) {
     build.onEnd(async (result) => {
       if (result.errors.length > 0) return
-      const outputFiles = await glob('dist/**/*.js', { cwd: __dirname, absolute: true })
+      const outputFiles = await glob('**/*.js', { cwd: join(__dirname, 'dist'), absolute: true })
       for (const file of outputFiles) {
         const fileDir = dirname(file)
         let content = readFileSync(file, 'utf-8')
@@ -69,7 +69,7 @@ const addJsExtension = {
 
 await esbuild.build({
   entryPoints,
-  outdir: 'dist',
+  outdir: join(__dirname, 'dist'),
   format: 'esm',
   platform: 'node',
   target: 'node18',
