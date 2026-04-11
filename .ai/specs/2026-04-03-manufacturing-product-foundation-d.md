@@ -413,7 +413,43 @@ defaultRoleFeatures: {
 
 ---
 
+## Implementation Status
+
+| Phase | Status | Date | Notes |
+|-------|--------|------|-------|
+| Phase A — Entities + CRUD | Done | 2026-04-05 | All module files, entities, validators, commands, CRUD routes, events, ACL, setup, search, translations, DI |
+| Phase B — Resolution Engine + Namespace Validation | Done | 2026-04-05 | config-resolution.ts pure function, resolve endpoint, namespace-validator.ts, validate-namespace endpoint |
+| Phase C — UI Widget + Tests | Partial | 2026-04-05 | Unit tests done (50 passing). Migration written. UI widget deferred to Phase 3 |
+
+### Phase A — Detailed Progress
+- [x] Step 1: Create `src/modules/configurator/` with index.ts, acl.ts, events.ts, setup.ts, di.ts, search.ts, translations.ts
+- [x] Step 2: Create `data/entities.ts` with ConfigAttribute, ConstraintRule
+- [x] Step 3: Create `data/validators.ts` with Zod schemas
+- [x] Step 4: Create `translations.ts` declaring translatable fields
+- [x] Step 5: Create `search.ts` with searchConfig for ConfigAttribute
+- [x] Step 6: Hand-write migration (Migration20260404000004)
+- [x] Step 7: Create CRUD routes for config-attribute and constraint-rule
+- [x] Step 8: Update `packages/manufacturing/src/index.ts` to export configurator module
+
+### Phase B — Detailed Progress
+- [x] Step 1: Create `lib/config-resolution.ts` — pure function
+- [x] Step 2: Create `api/manufacturing/configurator/resolve.ts` — resolution endpoint
+- [x] Step 3: Create `api/manufacturing/configurator/validate-namespace.ts` — namespace validation endpoint
+- [x] Step 4: Create `lib/namespace-validator.ts` — pure function
+
+### Phase C — Detailed Progress
+- [x] Unit tests for config-resolution.ts (20 tests)
+- [x] Unit tests for namespace-validator.ts (5 tests)
+- [x] Unit tests for validators.ts (11 tests)
+- [x] Module structure tests (14 tests)
+- [ ] UI widget (ConfiguratorTab.tsx) — deferred
+
+---
+
 ## Changelog
+
+### 2026-04-05
+- Implemented Phases A, B, C (backend). 50 unit tests passing. Migration hand-written. UI widget deferred.
 
 ### 2026-04-04
 - Initial sub-spec. 2 entities (ConfigAttribute, ConstraintRule). Configuration resolution engine with constraint evaluation and cascading. Namespace rule enforcement. 3-phase implementation plan. Completes Phase 1 spec family (a→d)
