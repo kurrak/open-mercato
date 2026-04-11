@@ -59,7 +59,7 @@ const crud = makeCrudRoute({
       if (query.productId) filters.product_id = { $eq: query.productId }
       if (query.actionType) filters.action_type = { $eq: query.actionType }
       const activeToken = parseBooleanToken(query.isActive)
-      if (activeToken !== undefined) filters.is_active = { $eq: activeToken }
+      if (activeToken !== null) filters.is_active = { $eq: activeToken }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
         const ids = query.ids.split(',').map((v: string) => v.trim()).filter((v: string) => v.length > 0)
         if (ids.length > 0) filters.id = { $in: ids }

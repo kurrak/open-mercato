@@ -61,7 +61,7 @@ const crud = makeCrudRoute({
       const filters: Record<string, unknown> = {}
       if (query.productId) filters.product_id = { $eq: query.productId }
       const preferredToken = parseBooleanToken(query.isPreferred)
-      if (preferredToken !== undefined) filters.is_preferred = { $eq: preferredToken }
+      if (preferredToken !== null) filters.is_preferred = { $eq: preferredToken }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
         const ids = query.ids.split(',').map((v: string) => v.trim()).filter((v: string) => v.length > 0)
         if (ids.length > 0) filters.id = { $in: ids }
