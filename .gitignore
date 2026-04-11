@@ -122,3 +122,7 @@ docker/opencode/opencode.jsonc
 .ai/qa/ephemeral*
 .ai/dev-ephemeral-envs.json
 .agents/
+
+# Private manufacturing example fixture (local-only, not committed)
+# Enabled via OM_ENABLE_MANUFACTURING_EXAMPLE=true in your local .env
+apps/mercato/src/modules/manufacturing_example/

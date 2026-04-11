@@ -74,3 +74,9 @@ if (enterpriseModulesEnabled && enterpriseSsoEnabled) {
 if (enterpriseModulesEnabled && enterpriseSecurityEnabled) {
   enabledModules.push({ id: 'security', from: '@open-mercato/enterprise' })
 }
+
+const manufacturingExampleEnabled = parseBooleanWithDefault(process.env.OM_ENABLE_MANUFACTURING_EXAMPLE, false)
+
+if (manufacturingExampleEnabled) {
+  enabledModules.push({ id: 'manufacturing_example', from: '@app' })
+}
