@@ -85,9 +85,12 @@ Injected into the main sidebar via the existing `product_master.injection.manufa
 | Product list | `/backend/manufacturing/products` | `product_master/backend/manufacturing/products/page.tsx` | product_master |
 | Product detail | `/backend/manufacturing/products/[id]` | `product_master/backend/manufacturing/products/[id]/page.tsx` | product_master (shell) + bom, routing, configurator (tab components) |
 | Work centers | `/backend/manufacturing/work-centers` | `routing/backend/manufacturing/work-centers/page.tsx` | routing |
-| Work center detail | `/backend/manufacturing/work-centers/[id]` | `routing/backend/manufacturing/work-centers/[id]/page.tsx` | routing |
+| Work center create | `/backend/manufacturing/work-centers/create` | `routing/backend/manufacturing/work-centers/create/page.tsx` | routing |
+| Work center edit | `/backend/manufacturing/work-centers/[id]` | `routing/backend/manufacturing/work-centers/[id]/page.tsx` | routing |
 | Factory zones | `/backend/manufacturing/factory-zones` | `routing/backend/manufacturing/factory-zones/page.tsx` | routing |
 | Units of measure | `/backend/manufacturing/units-of-measure` | `product_master/backend/manufacturing/units-of-measure/page.tsx` | product_master |
+
+> **Work center create vs edit**: the `create` and `[id]` routes are deliberately split into sibling page files so the `create` literal cannot collide with a record UUID in the `[id]` dynamic segment. Both share the same form fields/groups/submit helpers, extracted to `routing/components/WorkCenterFormConfig.ts`. `[id]/page.tsx` is edit-only.
 
 **URL routing convention:** Backend pages nested under `backend/manufacturing/` subdirectory to get `/backend/manufacturing/` prefix. Same pattern as API routes (`api/manufacturing/`). Follows catalog precedent (`catalog/backend/catalog/products/` → `/backend/catalog/products`).
 
@@ -530,6 +533,33 @@ Create `packages/manufacturing/AGENTS.md` using the `create-agents-md` skill. Co
 
 Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright API-first + UI navigation.
 
+### Coverage — API Routes
+
+| Route | Method(s) | Covered by |
+|---|---|---|
+| `/api/product_master/manufacturing/product-manufacturing-extension` | GET / POST / PUT / DELETE | #1, #2, #7, #8, #24 |
+| `/api/product_master/manufacturing/catalog-products?enrolled=true\|false` | GET | #1 (picker `enrolled=false`), #7 (list `enrolled=true`), #24 |
+| `/api/product_master/manufacturing/unit-of-measure` | GET / POST / PUT / DELETE | #6 |
+| `/api/product_master/manufacturing/production-method` | GET / POST / PUT / DELETE | #9, #24 |
+| `/api/routing/work-center` | GET / POST / PUT / DELETE | #4 |
+| `/api/routing/factory-zone` | GET / POST / PUT / DELETE | #5 |
+| `/api/catalog/products` (via `catalog-products` join) | GET | #1, #7 (indirect; covered by the catalog-products join endpoint) |
+
+### Coverage — UI Paths
+
+| Path | Covered by |
+|---|---|
+| `/backend/manufacturing/products` | #1, #7, #24 |
+| `/backend/manufacturing/products/[id]` (Overview tab) | #2, #7, #8, #9, #24 |
+| `/backend/manufacturing/work-centers` | #4 |
+| `/backend/manufacturing/work-centers/[id]` | #4 |
+| `/backend/manufacturing/factory-zones` | #5 |
+| `/backend/manufacturing/units-of-measure` | #6 |
+| `/backend/manufacturing` (dashboard redirect → products) | #1 (implicit via first navigation) |
+| Catalog product detail widget (`crud-form:catalog.product` spot) | #2 |
+
+### Scenarios
+
 | ID | Phase | Scenario | Validates |
 |---|---|---|---|
 | 1 | 1 | Navigate to Manufacturing → Products → see empty list → click "Add Product" → select catalog product → verify extension created → redirected to detail page | Product onboarding flow, picker dialog, extension auto-creation |
@@ -573,6 +603,12 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 - **Mitigation**: Query extension table for product_ids (single indexed query), pass as exclusion filter to catalog API. Catalog API supports ID exclusion via query params. Paginated picker (pageSize ≤ 50)
 - **Residual risk**: Very large catalogs (10K+ products) may need server-side exclusion join. Acceptable for initial implementation
 
+##### Picker at scale
+- **Current implementation**: `/api/product_master/manufacturing/catalog-products?enrolled=false` loads every enrolled product id into a JS `Set`, then passes the whole set as a `{ id: { $nin: [...] } }` clause on the `CatalogProduct` query. Statement size is linear in the enrolled-product count, and every unique exclusion list churns the PostgreSQL query-plan cache
+- **Scale limit**: Comfortable up to ~1k enrolled products per tenant (exclusion list fits in a single ~40 KB statement and query-plan cache stays healthy)
+- **Follow-up**: Past the 1k threshold, switch the picker branch to a server-side anti-join — either a raw `NOT EXISTS (SELECT 1 FROM manufacturing_product_extensions ...)` subquery against the tenant-scoped table via `em.getKnex()`, or push the exclusion into a custom CRUD filter path so MikroORM generates the subquery itself
+- **Inline marker**: the branch in `catalog-products/route.ts` carries a `TODO(scale)` comment that points back to this note so future reviewers can find the decision trail
+
 #### Cross-Module Tab Content
 - **Scenario**: Product detail page shell is in product_master module, but BOM tab content is in bom module, routing in routing module, configurator in configurator module. Tab components must be imported cross-module within the same package
 - **Severity**: Low
@@ -600,7 +636,7 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 | Rule Source | Rule | Status | Notes |
 |---|---|---|---|
 | root AGENTS.md | Widget injection via widgets/injection/ + injection-table.ts | Compliant | Catalog link widget uses existing crud-form:catalog.product spot. Sidebar menu widget already exists |
-| root AGENTS.md | ACL features check | Compliant | All pages require existing ACL features (product_master.view, bom.view, routing.view, configurator.view) |
+| root AGENTS.md | ACL features check | Compliant | Per-entity sub-namespaces: `product_master.view` for products/UoM, `bom.view` for BOM tab, `routing.view` for routing tab, `routing.work_center.view\|manage` for work center pages, `routing.factory_zone.view\|manage` for factory zone pages, `configurator.view` for configurator tab. `routing.factory_zone.*` was added in the 2026-04-11 code-review round to stop the factory-zones page guard (`routing.view`) diverging from the factory-zone API guard (`routing.work_center.view`) — see F1 in that round's review notes. |
 | packages/ui AGENTS.md | Use CrudForm for create/edit | Compliant | Dialogs and edit forms use CrudForm. Detail page uses DetailTabsLayout |
 | packages/ui AGENTS.md | Use DataTable for lists | Compliant | Product list, operations, attributes, rules, work centers, factory zones, UoM all use DataTable |
 | packages/ui AGENTS.md | apiCall/apiCallOrThrow, never raw fetch | Compliant | All API calls via apiCall |
@@ -618,7 +654,7 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 
 | Check | Status | Notes |
 |---|---|---|
-| Pages use correct ACL features from sub-specs a–d | Pass | product_master.view, bom.view, routing.view, configurator.view |
+| Pages use correct ACL features from sub-specs a–d | Pass | `product_master.view`, `bom.view`, `routing.view`, `routing.work_center.view\|manage`, `routing.factory_zone.view\|manage` (added 2026-04-11), `configurator.view`. Page guard, menu widget feature gate, and API route `requireFeatures` align for every master data entity |
 | API endpoints referenced match sub-spec contracts | Pass | All CRUD and custom endpoints from sub-specs a–d |
 | Graceful Incompleteness applied consistently | Pass | Every tab has empty states, every nullable field has placeholder display |
 | Navigation structure matches sidebar widget | Pass | 4 sidebar items → 4 page paths |
@@ -629,11 +665,25 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 
 ---
 
+## Implementation Status
+
+| Phase | Status | Date | Notes |
+|-------|--------|------|-------|
+| Pre-req — AGENTS.md | Done | 2026-04-06 | `packages/manufacturing/AGENTS.md` created |
+| Phase 1 — Navigation + Product List + Catalog Widget | Done | 2026-04-06 | Sidebar menu with sub-items, product list DataTable, product picker dialog, catalog injection widget |
+| Phase 2 — Master Data Pages | Done | 2026-04-06 | Work centers list+detail, factory zones list+dialog, UoM list+dialog |
+| Phase 3 — Product Detail Shell + Overview Tab | Done | 2026-04-06 | ManufacturingTabsLayout, FormHeader, Overview tab with fields/PM/readiness. BOM/Routing/Configurator tabs render placeholder bodies until their phases land |
+| Phase 4 — Configurator Tab | Not Started | — | — |
+| Phase 5 — BOM Tab | Not Started | — | — |
+| Phase 6 — Routing Tab | Not Started | — | — |
+| Phase 7 — Seed Data | Not Started | — | Deferred to follow-up — requires running DB with tenant |
+
+---
+
 ## Changelog
 
 ### 2026-04-06
-- Feedback fixes: reorder = up/down buttons (no drag-and-drop library in OM), dynamic ConfigurationForm component spec with attribute_type→input mapping table, AGENTS.md as pre-requisite step, sub-spec d status → Implemented
-- Pre-implementation fixes: URL routing decision (nest under backend/manufacturing/), tab layout decision (build local component, not import from core/customers), added page file locations to page map, added 14 integration test scenarios
+- **Implementation**: Phases 1-3 implemented. Typecheck and build pass. BOM/Routing/Configurator tabs render placeholder bodies until their respective phases land.
 
 ### 2026-04-05
 - Initial spec. Product list + tabbed detail (Overview, BOM, Routing, Configurator) + 3 master data pages + catalog widget injection + sidebar navigation. 7-phase implementation plan. Graceful Incompleteness UI patterns. Seed data hook

@@ -97,6 +97,41 @@ async function ensureManufacturingExtension(
   })
 }
 
+function requireAuthScope(ctx: { auth: { orgId?: string | null; tenantId?: string | null } | null }): {
+  organizationId: string
+  tenantId: string
+} {
+  const organizationId = ctx.auth?.orgId
+  const tenantId = ctx.auth?.tenantId
+  if (!organizationId || !tenantId) {
+    throw new CrudHttpError(401, { error: 'Unauthorized' })
+  }
+  return { organizationId, tenantId }
+}
+
+async function demoteOtherDefaults(
+  em: EntityManager,
+  params: {
+    organizationId: string
+    tenantId: string
+    productId: string
+    excludeId: string | null
+  },
+): Promise<void> {
+  const others = await em.find(ProductionMethod, {
+    organizationId: params.organizationId,
+    tenantId: params.tenantId,
+    productId: params.productId,
+    isDefault: true,
+    deletedAt: null,
+    ...(params.excludeId ? { id: { $ne: params.excludeId } } : {}),
+  })
+  for (const other of others) {
+    other.isDefault = false
+    other.updatedAt = new Date()
+  }
+}
+
 const createPMCommand: CommandHandler<ProductionMethodCreateInput, { productionMethodId: string }> = {
   id: 'product_master.productionMethod.create',
   async execute(input, ctx) {
@@ -104,6 +139,15 @@ const createPMCommand: CommandHandler<ProductionMethodCreateInput, { productionM
     const em = (ctx.container.resolve('em') as EntityManager).fork()
 
     await ensureManufacturingExtension(em, parsed.productId, parsed.organizationId, parsed.tenantId)
+
+    if (parsed.isDefault) {
+      await demoteOtherDefaults(em, {
+        organizationId: parsed.organizationId,
+        tenantId: parsed.tenantId,
+        productId: parsed.productId,
+        excludeId: null,
+      })
+    }
 
     const record = em.create(ProductionMethod, {
       organizationId: parsed.organizationId,
@@ -138,8 +182,13 @@ const createPMCommand: CommandHandler<ProductionMethodCreateInput, { productionM
     return { productionMethodId: record.id }
   },
   captureAfter: async (_input, result, ctx) => {
+    const { organizationId, tenantId } = requireAuthScope(ctx)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: result.productionMethodId })
+    const record = await em.findOne(ProductionMethod, {
+      id: result.productionMethodId,
+      organizationId,
+      tenantId,
+    })
     return record ? snapshotPM(record) : null
   },
   buildLog: async ({ snapshots }) => {
@@ -160,7 +209,11 @@ const createPMCommand: CommandHandler<ProductionMethodCreateInput, { productionM
     const after = payload?.after ?? null
     if (!after) return
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: after.id })
+    const record = await em.findOne(ProductionMethod, {
+      id: after.id,
+      organizationId: after.organizationId,
+      tenantId: after.tenantId,
+    })
     if (!record) return
     record.deletedAt = new Date()
     await em.flush()
@@ -171,16 +224,28 @@ const updatePMCommand: CommandHandler<ProductionMethodUpdateInput, { productionM
   id: 'product_master.productionMethod.update',
   async prepare(input, ctx) {
     requireId(input.id, 'Production method ID is required')
+    const { organizationId, tenantId } = requireAuthScope(ctx)
     const em = ctx.container.resolve('em') as EntityManager
-    const record = await em.findOne(ProductionMethod, { id: input.id })
+    const record = await em.findOne(ProductionMethod, {
+      id: input.id,
+      organizationId,
+      tenantId,
+      deletedAt: null,
+    })
     return { before: record ? snapshotPM(record) : null }
   },
   async execute(input, ctx) {
     const parsed = productionMethodUpdateSchema.parse(input)
     requireId(parsed.id, 'Production method ID is required')
+    const { organizationId, tenantId } = requireAuthScope(ctx)
 
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: parsed.id, deletedAt: null })
+    const record = await em.findOne(ProductionMethod, {
+      id: parsed.id,
+      organizationId,
+      tenantId,
+      deletedAt: null,
+    })
     if (!record) {
       throw new CrudHttpError(404, { error: 'Production method not found' })
     }
@@ -195,6 +260,15 @@ const updatePMCommand: CommandHandler<ProductionMethodUpdateInput, { productionM
 
     if (Object.keys(changes).length === 0) {
       return { productionMethodId: record.id }
+    }
+
+    if (changes.isDefault?.to === true) {
+      await demoteOtherDefaults(em, {
+        organizationId: record.organizationId,
+        tenantId: record.tenantId,
+        productId: record.productId,
+        excludeId: record.id,
+      })
     }
 
     for (const [key, change] of Object.entries(changes)) {
@@ -219,8 +293,13 @@ const updatePMCommand: CommandHandler<ProductionMethodUpdateInput, { productionM
     return { productionMethodId: record.id }
   },
   captureAfter: async (_input, result, ctx) => {
+    const { organizationId, tenantId } = requireAuthScope(ctx)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: result.productionMethodId })
+    const record = await em.findOne(ProductionMethod, {
+      id: result.productionMethodId,
+      organizationId,
+      tenantId,
+    })
     return record ? snapshotPM(record) : null
   },
   buildLog: async ({ snapshots }) => {
@@ -243,7 +322,11 @@ const updatePMCommand: CommandHandler<ProductionMethodUpdateInput, { productionM
     const before = payload?.before ?? null
     if (!before) return
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: before.id })
+    const record = await em.findOne(ProductionMethod, {
+      id: before.id,
+      organizationId: before.organizationId,
+      tenantId: before.tenantId,
+    })
     if (!record) return
     Object.assign(record, {
       name: before.name,
@@ -265,14 +348,26 @@ const deletePMCommand: CommandHandler<{ id: string }, { productionMethodId: stri
   id: 'product_master.productionMethod.delete',
   async prepare(input, ctx) {
     requireId(input.id, 'Production method ID is required')
+    const { organizationId, tenantId } = requireAuthScope(ctx)
     const em = ctx.container.resolve('em') as EntityManager
-    const record = await em.findOne(ProductionMethod, { id: input.id })
+    const record = await em.findOne(ProductionMethod, {
+      id: input.id,
+      organizationId,
+      tenantId,
+      deletedAt: null,
+    })
     return { before: record ? snapshotPM(record) : null }
   },
   async execute(input, ctx) {
     requireId(input.id, 'Production method ID is required')
+    const { organizationId, tenantId } = requireAuthScope(ctx)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: input.id, deletedAt: null })
+    const record = await em.findOne(ProductionMethod, {
+      id: input.id,
+      organizationId,
+      tenantId,
+      deletedAt: null,
+    })
     if (!record) {
       throw new CrudHttpError(404, { error: 'Production method not found' })
     }
@@ -312,7 +407,11 @@ const deletePMCommand: CommandHandler<{ id: string }, { productionMethodId: stri
     const before = payload?.before ?? null
     if (!before) return
     const em = (ctx.container.resolve('em') as EntityManager).fork()
-    const record = await em.findOne(ProductionMethod, { id: before.id })
+    const record = await em.findOne(ProductionMethod, {
+      id: before.id,
+      organizationId: before.organizationId,
+      tenantId: before.tenantId,
+    })
     if (!record) return
     record.deletedAt = null
     await em.flush()

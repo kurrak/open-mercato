@@ -22,12 +22,12 @@ export async function POST(req: Request) {
     const { translate } = await resolveTranslations()
 
     if (!auth?.tenantId) {
-      throw new CrudHttpError(401, { error: translate('product_master.errors.unauthorized', 'Unauthorized') })
+      throw new CrudHttpError(401, { error: translate('manufacturing.errors.unauthorized', 'Unauthorized') })
     }
     const organizationId = auth.orgId ?? null
     if (!organizationId) {
       throw new CrudHttpError(400, {
-        error: translate('product_master.errors.organization_required', 'Organization context is required'),
+        error: translate('manufacturing.errors.organization_required', 'Organization context is required'),
       })
     }
 
@@ -64,7 +64,11 @@ export async function POST(req: Request) {
       return NextResponse.json(err.body, { status: err.status })
     }
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: 'Validation failed', issues: err.issues }, { status: 400 })
+      const { translate } = await resolveTranslations()
+      return NextResponse.json(
+        { error: translate('manufacturing.errors.invalid_query', 'Invalid query parameters') },
+        { status: 400 },
+      )
     }
     console.error('production-method.resolve.post failed', err)
     return NextResponse.json({ error: 'Failed to resolve production method' }, { status: 500 })

@@ -1,4 +1,5 @@
 import './commands/production-methods'
+import './commands/product-manufacturing-extension'
 import './commands/unit-of-measure'
 import './commands/supplier-info'
 import './commands/uom-conversion'

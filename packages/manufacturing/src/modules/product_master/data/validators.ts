@@ -51,6 +51,16 @@ export type UnitOfMeasureUpdateInput = z.infer<typeof unitOfMeasureUpdateSchema>
 const configurationTypes = ['none', 'variant_based', 'rule_based'] as const
 const procurementTypes = ['buy', 'make', 'buy_and_make', 'service'] as const
 
+export const productMfgExtensionCreateSchema = scopedSchema.extend({
+  productId: uuid(),
+  configurationType: z.enum(configurationTypes).optional(),
+  procurementType: z.enum(procurementTypes).optional(),
+  baseUomId: uuid().nullable().optional(),
+  isPhantomDefault: z.boolean().optional(),
+})
+
+export type ProductMfgExtensionCreateInput = z.infer<typeof productMfgExtensionCreateSchema>
+
 export const productMfgExtensionUpdateSchema = z.object({ id: uuid() }).merge(
   scopedSchema
     .extend({

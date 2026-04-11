@@ -2,7 +2,7 @@
 
 import { useT } from '@open-mercato/shared/lib/i18n/context'
 
-export default function RoutingTab({ productId }: { productId?: string }) {
+export default function RoutingTab({ productId: _productId }: { productId?: string }) {
   const t = useT()
 
   return (

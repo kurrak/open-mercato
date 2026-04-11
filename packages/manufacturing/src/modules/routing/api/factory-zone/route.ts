@@ -9,10 +9,10 @@ import { factoryZoneCreateSchema, factoryZoneUpdateSchema } from '../../data/val
 import { createRoutingCrudOpenApi, createPagedListResponseSchema, defaultOkResponseSchema } from '../openapi'
 
 const routeMetadata = {
-  GET: { requireAuth: true, requireFeatures: ['routing.work_center.view'] },
-  POST: { requireAuth: true, requireFeatures: ['routing.work_center.manage'] },
-  PUT: { requireAuth: true, requireFeatures: ['routing.work_center.manage'] },
-  DELETE: { requireAuth: true, requireFeatures: ['routing.work_center.manage'] },
+  GET: { requireAuth: true, requireFeatures: ['routing.factory_zone.view'] },
+  POST: { requireAuth: true, requireFeatures: ['routing.factory_zone.manage'] },
+  PUT: { requireAuth: true, requireFeatures: ['routing.factory_zone.manage'] },
+  DELETE: { requireAuth: true, requireFeatures: ['routing.factory_zone.manage'] },
 }
 
 export const metadata = routeMetadata
