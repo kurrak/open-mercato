@@ -100,9 +100,8 @@ export class ProductManufacturingExtension {
   procurementType: ProcurementType = 'buy'
 
   @ManyToOne(() => UnitOfMeasure, {
-    name: 'base_uom_id',
     fieldName: 'base_uom_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   baseUom!: UnitOfMeasure
@@ -301,17 +300,15 @@ export class UomConversion {
   productId!: string
 
   @ManyToOne(() => UnitOfMeasure, {
-    name: 'from_uom_id',
     fieldName: 'from_uom_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   fromUom!: UnitOfMeasure
 
   @ManyToOne(() => UnitOfMeasure, {
-    name: 'to_uom_id',
     fieldName: 'to_uom_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   toUom!: UnitOfMeasure

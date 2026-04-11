@@ -98,9 +98,8 @@ export class BomLine {
   tenantId!: string
 
   @ManyToOne(() => BomHeader, {
-    name: 'bom_header_id',
     fieldName: 'bom_header_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   bomHeader!: BomHeader
@@ -190,9 +189,8 @@ export class BomLineVariant {
   tenantId!: string
 
   @ManyToOne(() => BomLine, {
-    name: 'bom_line_id',
     fieldName: 'bom_line_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   bomLine!: BomLine

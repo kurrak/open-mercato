@@ -91,9 +91,8 @@ export class WorkCenter {
   code!: string
 
   @ManyToOne(() => FactoryZone, {
-    name: 'factory_zone_id',
     fieldName: 'factory_zone_id',
-    referenceColumnName: 'id',
+
     nullable: true,
   })
   factoryZone?: FactoryZone | null
@@ -209,17 +208,15 @@ export class OperationTemplate {
   tenantId!: string
 
   @ManyToOne(() => RoutingTemplate, {
-    name: 'routing_template_id',
     fieldName: 'routing_template_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   routingTemplate!: RoutingTemplate
 
   @ManyToOne(() => WorkCenter, {
-    name: 'work_center_id',
     fieldName: 'work_center_id',
-    referenceColumnName: 'id',
+
     nullable: true,
   })
   workCenter?: WorkCenter | null
@@ -314,9 +311,8 @@ export class OperationTemplateVariant {
   tenantId!: string
 
   @ManyToOne(() => OperationTemplate, {
-    name: 'operation_template_id',
     fieldName: 'operation_template_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   operationTemplate!: OperationTemplate
@@ -395,17 +391,15 @@ export class OperationDependency {
   tenantId!: string
 
   @ManyToOne(() => OperationTemplate, {
-    name: 'predecessor_operation_id',
     fieldName: 'predecessor_operation_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   predecessorOperation!: OperationTemplate
 
   @ManyToOne(() => OperationTemplate, {
-    name: 'successor_operation_id',
     fieldName: 'successor_operation_id',
-    referenceColumnName: 'id',
+
     nullable: false,
   })
   successorOperation!: OperationTemplate
