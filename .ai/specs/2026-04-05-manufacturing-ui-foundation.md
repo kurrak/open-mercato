@@ -323,6 +323,8 @@ Create `packages/manufacturing/AGENTS.md` using the `create-agents-md` skill. Co
 ### Out of Scope (deferred)
 
 - **Seed/example data** — originally Phase 7. Dropped from spec. Demo fixtures go in an app-level module per the private fixture pattern (see memory note `feedback_demo_seed_location.md`), not in the packages/manufacturing tree.
+- **UomConversion CRUD** — entity exists in sub-spec a (per-product unit conversion factors). UI deferred pending schema decision: should `UomConversion` be global master data (drop `product_id`) or remain per-product? Belongs on the UoM master data page once resolved.
+- **SupplierInfo CRUD** — entity exists in sub-spec a (per-product supplier records: price, lead time, currency). UI deferred. Will be a separate "Suppliers" tab on the product detail page — spec to be added to sub-spec a when ready.
 
 ## Integration Test Scenarios
 
