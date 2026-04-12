@@ -1,4 +1,8 @@
 {
-  "configurator.tab.placeholder": "Los atributos de configuración, reglas de restricción y vista previa de resolución se implementarán aquí.",
-  "configurator.tab.title": "Configurador"
+  "configurator.tab.title": "Configurador",
+  "configurator.tab.variantBasedTitle": "Configuración basada en variantes",
+  "configurator.tab.variantBasedMessage": "Este producto utiliza configuración basada en variantes. Gestione las variantes en el Catálogo.",
+  "configurator.tab.openCatalog": "Abrir en Catálogo",
+  "configurator.attributes.emptyTitle": "No hay atributos de configuración definidos",
+  "configurator.attributes.emptyDescription": "Agregue atributos para definir los ejes de configuración de este producto."
 }

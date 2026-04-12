@@ -1,4 +1,8 @@
 {
-  "configurator.tab.placeholder": "Configuration attributes, constraint rules, and resolution preview will be implemented here.",
-  "configurator.tab.title": "Configurator"
+  "configurator.tab.title": "Configurator",
+  "configurator.tab.variantBasedTitle": "Variant-based configuration",
+  "configurator.tab.variantBasedMessage": "This product uses variant-based configuration. Manage variants in the Catalog.",
+  "configurator.tab.openCatalog": "Open in Catalog",
+  "configurator.attributes.emptyTitle": "No configuration attributes defined",
+  "configurator.attributes.emptyDescription": "Add attributes to define configuration axes for this product."
 }

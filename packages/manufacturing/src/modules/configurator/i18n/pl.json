@@ -1,4 +1,8 @@
 {
-  "configurator.tab.placeholder": "Atrybuty konfiguracji, reguły ograniczeń i podgląd rozwiązywania zostaną tu zaimplementowane.",
-  "configurator.tab.title": "Konfigurator"
+  "configurator.tab.title": "Konfigurator",
+  "configurator.tab.variantBasedTitle": "Konfiguracja wariantowa",
+  "configurator.tab.variantBasedMessage": "Ten produkt używa konfiguracji wariantowej. Zarządzaj wariantami w Katalogu.",
+  "configurator.tab.openCatalog": "Otwórz w Katalogu",
+  "configurator.attributes.emptyTitle": "Brak zdefiniowanych atrybutów konfiguracji",
+  "configurator.attributes.emptyDescription": "Dodaj atrybuty, aby zdefiniować osie konfiguracji tego produktu."
 }
