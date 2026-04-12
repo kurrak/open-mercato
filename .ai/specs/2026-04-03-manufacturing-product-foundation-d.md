@@ -222,7 +222,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 
 ### Config Attribute Usage
 
-- `GET /api/manufacturing/config-attribute/:id/usage` — Count cross-module references to this attribute's key
+- `GET /api/manufacturing/config-attribute/usage?id=<uuid>` — Count cross-module references to this attribute's key
   - Response: `{ bomLineCount: number, operationVariantCount: number }`
   - Queries BomLine (bom module) and OperationTemplateVariant (routing module) tables for rows where `variant_condition` JSON contains the attribute's `key`, scoped to the same `product_id` + `organization_id` + `tenant_id`. Cross-module query is allowed — same package (`packages/manufacturing`). Use `findWithDecryption` on both entities
   - ACL: requires `configurator.view`
@@ -364,9 +364,11 @@ DataTable of ConfigAttribute via `/api/manufacturing/config-attribute?product_id
 | Values | Per type: `enum` → comma-separated preview of `allowed_values` (e.g., "SD01, SD02, SD03"); `numeric_range` → "min – max (step)" (e.g., "0 – 100 (5)"); `boolean` → "Yes / No"; `text` → "Free text"; `material` → CatalogCategory name as link to `/backend/catalog/categories/[id]`, or "No category selected" if `material_filter_id` is null |
 | Mandatory | Checkbox icon |
 | Group | `attribute_group` label |
-| Order | Number |
+| (reorder) | Inline up/down arrow buttons (visible when `configurator.edit` granted) |
 
-Row actions (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+Row actions (stable ids): `edit`, `delete`
+
+**Reorder column:** Inline `IconButton` arrows (up/down) in a dedicated narrow column. Calls `POST /api/manufacturing/config-attribute/reorder` with `{ sourceId, targetId }` for atomic swap. Replaces the previous approach of reorder actions in `RowActions` and a separate "Order" number column — arrow buttons provide clearer affordance.
 
 **Delete confirmation:** Before deleting, call `GET /api/manufacturing/config-attribute/:id/usage` to get counts of referencing BomLines and OperationTemplateVariants. If either count > 0, the confirm dialog shows: "This attribute is referenced by N BOM lines and M routing overrides. Deleting it will orphan those references." Delete still proceeds if confirmed (Graceful Incompleteness — orphaned keys produce warning badges, not errors).
 
@@ -386,10 +388,10 @@ Header actions: "Add Attribute" (primary), **"Test Configuration"** (secondary/g
 - `enum` → list editor for `allowed_values` (add/remove rows)
 - `numeric_range` → three inputs: min, max, step → serialized to `allowed_values: {min, max, step}`
 - `boolean` → no additional fields (allowed values implicit)
-- `text` → optional validation regex
+- `text` → optional validation regex (deferred — no type-specific fields in initial implementation)
 - `material` → combobox picking a CatalogCategory for `material_filter_id`
 
-**Reorder**: up/down arrow buttons on each row, calls PUT with new `sort_order` (same pattern as sub-spec b BOM lines).
+**Reorder**: inline up/down `IconButton` arrows in a dedicated column, calls `POST /api/manufacturing/config-attribute/reorder` with `{ sourceId, targetId }` for atomic display_order swap.
 
 #### 3. ConfigurationForm component
 

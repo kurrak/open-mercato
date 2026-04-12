@@ -62,7 +62,13 @@ export default function ManufacturingProductDetailPage({
   const [extension, setExtension] = React.useState<ManufacturingExtension | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const [notFound, setNotFound] = React.useState(false)
-  const [activeTab, setActiveTab] = React.useState<TabId>('overview')
+  const [activeTab, setActiveTab] = React.useState<TabId>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '') as TabId
+      if (['overview', 'bom', 'routing', 'configurator'].includes(hash)) return hash
+    }
+    return 'overview'
+  })
   const [reloadToken, setReloadToken] = React.useState(0)
 
   const reload = React.useCallback(() => setReloadToken((n) => n + 1), [])
@@ -185,7 +191,10 @@ export default function ManufacturingProductDetailPage({
       <ManufacturingTabsLayout
         tabs={tabs}
         activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as TabId)}
+        onTabChange={(id) => {
+          setActiveTab(id as TabId)
+          window.history.replaceState(null, '', `#${id}`)
+        }}
       >
         {activeTab === 'overview' && (
           <OverviewTab
