@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `bom`) |
@@ -374,27 +374,122 @@ defaultRoleFeatures: {
 
 ### Phase C: UI Widget + Tests
 
-1. Create `backend/products/BomTab.tsx` — widget injected into product detail page
-2. BOM tree visualization: hierarchical display of BomHeader → BomLines, with phantom indicators, variant condition badges, date-effective markers
-3. Inline BomLine editing (add/remove/reorder lines)
-4. Unit tests for `lib/bom-explosion.ts`:
-   - Simple flat BOM (no children)
-   - Multi-level BOM (3 levels)
-   - Phantom pass-through (components float up)
-   - Date-effective filtering (line included/excluded by date)
-   - Variant condition matching (single key, multi-key AND, negation)
-   - BomLineVariant override (quantity, material, unit)
-   - Cycle detection (reject)
-   - Max depth limit (abort with error)
-   - Graceful Incompleteness: lines with null material_id skipped with warning
-5. Integration tests:
-   - Create multi-level BOM → run explosion → verify flat material list
-   - Create BOM with phantom child → explosion merges phantom lines to parent level
-   - Create BOM with date-effective lines → explode at different dates → verify correct filtering
-   - Create BOM with variant_condition → explode with/without matching → verify line activation
-   - Attempt circular BOM → verify rejection on save
+**Depends on:**
+- `2026-04-05-manufacturing-ui-foundation.md` Phase 3 (tab shell, `ManufacturingTabsLayout`, detail page)
+- `2026-04-05-manufacturing-ui-foundation.md` Phase 2 (UnitOfMeasure master data page — BOM lines pick UoM from here)
+- Sub-spec d Phase C (`useConfigAttributeKeys` hook — used for variant_condition key validation)
 
-**Testable outcome:** BOM tab visible in product detail. All unit and integration tests pass.
+#### 1. BomTab component
+
+- **Location**: `packages/manufacturing/src/modules/bom/components/BomTab.tsx` (exported and consumed by the product detail page from `2026-04-05-manufacturing-ui-foundation.md`)
+- **Props**: `{ productId: string; extension: ProductManufacturingExtension }`
+- **ACL feature**: `bom.view` for reads, `bom.create`/`bom.update`/`bom.delete` for writes, `bom.explode` for explosion
+
+#### 2. BOM header selector
+
+Two modes, user-togglable:
+
+- **Auto-resolve** (default): when the user provides config/variant in the explosion panel, the tab calls `POST /api/manufacturing/production-method/resolve` to find the best PM for the product, then uses its linked `bom_header_id`. User doesn't manually pick a BOM
+- **Manual override**: dropdown showing all BomHeaders for this product (production + packaging usage). For power users or when auto-resolution returns no match
+
+#### 3. BOM tree view
+
+Hierarchical expandable tree: BomHeader → BomLines. Empty state: "No bill of materials defined. Create BOM →" with primary button that opens the BomHeader create dialog.
+
+Each line row displays:
+
+| Field | Display |
+|---|---|
+| Material | Product name (link to catalog product detail) or "Material not selected" placeholder with warning icon |
+| Line type | Badge: `material` / `semi_product` |
+| Quantity | `net_qty (gross_qty)` or "—" if null |
+| UoM | Code from `unit_of_measure` lookup or "—" |
+| Scrap % | Percentage or "0%" |
+| Variant condition | Badge with key summary (e.g., "seat_type: SD01, SD02") or empty. Warning badge "Unknown key: X" when key is not in `useConfigAttributeKeys(productId)` |
+| Operation | Linked operation name or "—" |
+| Date range | `valid_from – valid_to` or "Always" |
+| Consumable | Flag icon if true |
+| Phantom | Ghost icon on child BomHeader rows where `is_phantom=true` |
+
+**Row actions** (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+
+**Reorder** uses `sort_order` increment/decrement via API. No drag-and-drop library in OM — explicit up/down buttons on each row.
+
+#### 4. BOM line CRUD dialogs
+
+**Add Material / Add Sub-assembly** header buttons → `CrudForm` dialog with:
+
+- Material picker: catalog product combobox (`/api/catalog/products` filtered by type) — required nullable per Graceful Incompleteness
+- Line type (select: `material` / `semi_product`)
+- Quantity net / gross (both nullable)
+- UoM picker: searchable combobox of UnitOfMeasure (master data from foundation spec Phase 2) with "Create new" shortcut → dialog
+- Scrap %
+- Variant condition editor: JSON object editor or key-value row editor. On save, validates keys against `useConfigAttributeKeys(productId)` — unknown keys produce a warning (non-blocking per Graceful Incompleteness)
+- Operation linker: combobox of OperationTemplate names for the routing template(s) linked to this product
+- Valid from / valid to (date pickers)
+- Consumable flag
+- Phantom flag (only when `line_type='semi_product'` with a `child_bom_header_id`)
+
+Save always succeeds — null material_id produces a warning badge on the row, not a save error.
+
+#### 5. BomLineVariant inline section
+
+Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant overrides for that line. Each override row shows:
+
+- Variant identifier (CatalogProductVariant name or raw `variant_condition` keys)
+- Quantity override (or "—")
+- Material override (or "—")
+- Unit override (or "—")
+
+**Inline actions**: add override (dialog), edit (dialog), delete (confirm). Add dialog enforces the XOR constraint from the entity spec — exactly one of `catalog_product_variant_id` or `variant_condition` must be set.
+
+#### 6. BOM explosion panel
+
+**Adaptive form** — the explosion input UI adapts to what's defined. The "Explode BOM" button always works, even with incomplete data.
+
+| Product State | Explosion Input Form |
+|---|---|
+| `configuration_type = 'none'`, no variant_condition on any BomLine | Just "Explode BOM" button + effective date picker. All lines always active |
+| `configuration_type = 'variant_based'`, BomLineVariants exist | Variant picker (CatalogProductVariant select) + effective date. No overrides yet → picker still shown with note "No variant-specific overrides defined — all variants produce the same material list". If BomLines have `variant_condition` values not matching any CatalogProductVariant option: warning "N lines reference variant values not found in product variants" |
+| `configuration_type = 'rule_based'`, ConfigAttributes defined | Dynamic attribute form via `ConfigurationForm` (from sub-spec d) + effective date. Calls configurator resolve first, then explodes with resolved conditions. If BomLines have `variant_condition` keys not in `useConfigAttributeKeys(productId)`: warning "N lines reference unknown configuration keys" with list of orphaned keys |
+| `configuration_type = 'rule_based'`, no ConfigAttributes yet | Just button + effective date + message "No configuration attributes defined — explosion will include all unconditional BOM lines." Conditional lines skipped, warning shown in result |
+| Any type, BomLines have variant_conditions but no configurator/variants | Just button + effective date + warning "N lines have variant conditions but no configuration provided — conditional lines will be skipped" |
+
+- Effective date picker defaults to today, shown in all states for date-effective line filtering
+- **Submit flow**: "Explode BOM" button wrapped in `useGuardedMutation` (non-CrudForm write). On click: calls `POST /api/manufacturing/bom-header/explode` → returns `{ jobId }`. Then `useOperationProgress(jobId)` polls for completion (or SSE when DOM Event Bridge is wired). On success, renders result. On error, shows flash error. `useGuardedMutation` provides `retryLastMutation` in injection context for retry support.
+- **Result display:**
+  - **Flat material list**: material name, quantity, UoM, gross quantity, level, source BOM
+  - **Warnings panel** (collapsible): "2 lines skipped: null material_id", "3 conditional lines skipped: no configuration provided", etc.
+
+#### 7. Readiness checklist integration
+
+Expose `useIsBomReady(productId): boolean` — returns `true` when at least one BomHeader with at least one non-soft-deleted BomLine exists for the product. Foundation overview tab calls this to flip BOM ○ → ✓.
+
+Also expose `useBomName(productId): { name: string | null; ready: boolean }` for the production method cards on the overview tab to display linked BOM names.
+
+#### 8. Unit tests
+
+Already completed as part of Phase B algorithm work (`lib/bom-explosion.ts` — 16 tests, validators — 12 tests, cycle detection — 6 tests, variant matching — 8 tests). No additional unit tests required for the UI layer.
+
+#### 9. Integration tests
+
+Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts`. Playwright, API-first setup + UI navigation.
+
+| ID | Scenario | Validates |
+|---|---|---|
+| B-UI-1 | Open product detail with no BOM → verify BOM tab shows "No bill of materials defined" empty state → click "Create BOM" → create BomHeader → verify tree renders | Empty state, BomHeader create, Graceful Incompleteness |
+| B-UI-2 | Add BomLine with null material_id → verify row saves successfully → verify "Material not selected" placeholder with warning icon on display | Graceful Incompleteness — save with incomplete data |
+| B-UI-3 | Add 3 BOM lines → reorder via up/down buttons → verify `sort_order` updated and display order reflects change | Reorder without drag-and-drop |
+| B-UI-4 | Open BomLine edit dialog → set variant_condition with an unknown key (not in ConfigAttributes) → verify warning badge on row after save → save succeeds | Namespace validation warning (non-blocking) |
+| B-UI-5 | Product with `configuration_type='none'`, no variant conditions → click "Explode BOM" → verify explosion panel shows only button + date picker → result shows all lines | Adaptive explosion panel — simplest case |
+| B-UI-6 | Product with `configuration_type='rule_based'`, 3 ConfigAttributes (from sub-spec d) → explode → verify `ConfigurationForm` renders → fill + resolve + explode → correct lines filtered | Adaptive explosion panel — rule_based case, integration with sub-spec d UI |
+| B-UI-7 | Add BomLineVariant override on existing BomLine → expand arrow → verify override row renders → edit quantity override → verify persisted | BomLineVariant inline CRUD |
+| B-UI-8 | Create child BomHeader with `is_phantom=true`, reference from parent BomLine → explode parent → verify phantom children merged flat into result | Phantom pass-through in explosion result |
+| B-UI-9 | Product with `configuration_type='variant_based'`, BomLineVariants exist → open explosion panel → verify variant picker (CatalogProductVariant select) + effective date → select variant → explode → correct overrides applied | Adaptive explosion panel — variant_based case |
+| B-UI-10 | Product with `configuration_type='rule_based'`, no ConfigAttributes defined → open explosion panel → verify just button + date + "No configuration attributes defined" message → explode → result includes only unconditional lines, conditional lines skipped with warning | Adaptive explosion panel — rule_based with no attributes |
+| B-UI-11 | Product with BomLines having variant_conditions but `configuration_type='none'` → open explosion panel → verify warning "N lines have variant conditions but no configuration provided" → explode → conditional lines skipped | Adaptive explosion panel — orphaned conditions |
+
+**Testable outcome:** BOM tab visible in product detail. Add/edit lines with validated variant conditions and UoM selection. Expand variant overrides. Run explosion in all 5 adaptive panel states and see results. Overview tab reflects BOM readiness. All unit and integration tests pass.
 
 ## Risks & Impact Review
 
@@ -418,6 +513,13 @@ defaultRoleFeatures: {
 - **Affected area**: BOM explosion correctness
 - **Mitigation**: Namespace validation at application level — when saving BomLine with variant_condition, validate keys against existing ConfigAttribute names. Warn (not block) if ConfigAttribute doesn't exist yet (Graceful Incompleteness — config may not be defined yet). Sub-spec d (configurator) will add stricter enforcement
 - **Residual risk**: If ConfigAttribute is renamed after BomLines reference it, existing variant_conditions become stale. Future: ECM module will handle this via ChangeOrder impact analysis when implemented
+
+#### Inline CRUD Complexity in BOM Tab
+- **Scenario**: BOM tab has tree + expandable variant overrides + adaptive explosion panel with warnings. Many interactive elements on one page
+- **Severity**: Medium
+- **Affected area**: UI complexity, user confusion, state management
+- **Mitigation**: Progressive disclosure — tree collapsed by default, variant overrides hidden behind expand arrow, explosion panel collapsible. Each section manages its own loading/error state independently. Standard OM patterns (CrudForm dialogs, DataTable, flash messages) keep interaction consistent
+- **Residual risk**: Power users with complex BOMs (50+ lines, many variants) may find the page busy. Future: split BOM tree into own page for very complex products
 
 #### Incomplete BOM Data
 - **Scenario**: BOM exists with lines that have null material_id, null quantities, or no lines at all. User requests explosion
@@ -471,12 +573,15 @@ defaultRoleFeatures: {
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-04 | 3 entities, 9 commands, 3 CRUD routes, where-used endpoint, cycle detection, migration |
 | Phase B — Explosion + Worker | Done | 2026-04-04 | Pure explosion algorithm, async queue worker with ProgressService, explode endpoint |
-| Phase C — Widget + Tests | Done | 2026-04-04 | BOM tab placeholder, 44 new tests (explosion: 16, validators: 12, cycle detection: 6, variant matching: 8, + product_master: 57). Total: 101 tests |
+| Phase C — Widget + Tests | In Progress | 2026-04-04 | Algorithm + unit tests done (44 tests). BOM tab placeholder landed in foundation spec Phase 3. Detailed BomTab UI migrated into this spec (2026-04-11 refactor) — implementation not started |
 | Review fixes | Done | 2026-04-06 | Removed production_method_id from BomHeader entity/validator/command/route. Added 3 bom_line_variant CRUD events. Migration regenerated |
 
 ---
 
 ## Changelog
+
+### 2026-04-11
+- **Phase C expansion**: Migrated detailed BOM tab UI spec from `2026-04-05-manufacturing-ui-foundation.md` (foundation UI spec refactor). Added BomTab component contract, BOM header selector modes, tree view layout, line CRUD dialogs, BomLineVariant inline section, adaptive explosion panel (5 states), readiness hook exports (`useIsBomReady`, `useBomName`), and 8 integration tests (B-UI-1..8). Phase C status: Done (placeholder only) → In Progress. Declared dependencies on foundation Phase 3 + Phase 2 (UoM) + sub-spec d Phase C (`useConfigAttributeKeys`).
 
 ### 2026-04-06
 - Review fixes: removed production_method_id from BomHeader (FK direction reversal — PM owns bom_header_id). Added bom_line_variant CRUD events. Status → In Progress

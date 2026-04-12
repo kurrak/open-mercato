@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `configurator`) |
@@ -317,32 +317,144 @@ defaultRoleFeatures: {
 
 ### Phase C: UI Widget + Tests
 
-1. Create `backend/products/ConfiguratorTab.tsx` — widget injected into product detail page
-2. Attribute editor: list attributes per group, add/edit/reorder, type-specific input (enum = list editor, numeric_range = min/max/step, material = category selector)
-3. Constraint rule builder: condition editor (select attribute → select values) + action editor (select action type → configure target)
-4. Resolution preview: enter test config → see resolved conditions + fired rules + warnings
-5. Unit tests for `lib/config-resolution.ts`:
-   - Simple resolution (3 attributes, no rules → passthrough)
-   - restrict_values rule fires → narrows options
-   - exclude_combination rule fires → error for invalid combo
-   - require_value rule fires → forces value, adds warning
-   - set_default rule fires → fills missing value
-   - Cascading rules (rule A changes value, rule B triggers on new value)
-   - Partial snapshot (missing mandatory attributes) → warnings, not errors
-   - Unknown keys in snapshot → warnings
-   - Empty rules list → passthrough
-   - Priority ordering (higher priority fires first)
-6. Unit tests for `lib/namespace-validator.ts`:
-   - Known keys → valid
-   - Unknown keys → listed in response
-   - No ConfigAttributes defined yet → all keys unknown (warning)
-7. Integration tests:
-   - Create attributes + rules → resolve configuration → verify output matches expected conditions
-   - Resolve with invalid combination → verify error in response
-   - Create BomLine with variant_condition → call namespace validation → verify keys match attributes
-   - End-to-end: create product → attributes → rules → BOM with variant_conditions → resolve config → explode BOM with resolved conditions → verify correct material list
+**Depends on:** `2026-04-05-manufacturing-ui-foundation.md` Phase 3 (tab shell, `ManufacturingTabsLayout`, detail page). Sub-spec b and c Phase C UIs depend on this phase for `variant_condition` namespace validation.
 
-**Testable outcome:** Configurator tab visible in product detail. All unit and integration tests pass. End-to-end config → BOM explosion chain works.
+**Implement first among the tab UIs** — BOM and Routing tabs validate `variant_condition` keys against `ConfigAttribute.key` defined here.
+
+#### 1. ConfiguratorTab component
+
+- **Location**: `packages/manufacturing/src/modules/configurator/components/ConfiguratorTab.tsx` (exported and consumed by the product detail page from `2026-04-05-manufacturing-ui-foundation.md`)
+- **Props**: `{ productId: string; extension: ProductManufacturingExtension }`
+- **ACL feature**: `configurator.view` for reads, `configurator.edit` for writes
+
+**Visibility & empty states** (owned by the detail shell via tab visibility rule, surfaced here as contract):
+- `configuration_type = 'rule_based'` → full tab body (attributes + rules + resolution preview)
+- `configuration_type = 'variant_based'` → tab body replaced with message: "This product uses variant-based configuration. Manage variants in the Catalog." with link to catalog product detail page
+- `configuration_type = 'none'` → tab hidden from tab bar (shell-side decision; component still safe to render)
+- `rule_based` with no attributes → "No configuration attributes defined. Add attribute →" empty state with primary button
+
+#### 2. Attributes section
+
+DataTable of ConfigAttribute via `/api/manufacturing/config-attribute?product_id=<id>`:
+
+| Column | Display |
+|---|---|
+| Key | Technical key (monospace) |
+| Label | Display name (translatable) |
+| Type | Badge: `enum` / `numeric_range` / `boolean` / `text` / `material` |
+| Values | Comma-separated preview of `allowed_values`, or "Live catalog" for `material` type |
+| Mandatory | Checkbox icon |
+| Group | `attribute_group` label |
+| Order | Number |
+
+Row actions (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+Header action: "Add Attribute"
+
+**Add/Edit dialog** — `CrudForm` with conditional fields per `attribute_type`:
+
+- Common: `key` (snake_case validator, monospace input, immutable after first use — show warning "renaming breaks existing variant_conditions"), `label` (translatable text), `attribute_type` (select — locked after create), `attribute_group`, `sort_order`, `is_mandatory`
+- `enum` → list editor for `allowed_values` (add/remove rows)
+- `numeric_range` → three inputs: min, max, step → serialized to `allowed_values: {min, max, step}`
+- `boolean` → no additional fields (allowed values implicit)
+- `text` → optional validation regex
+- `material` → combobox picking a CatalogCategory for `material_filter_id`
+
+**Reorder**: up/down arrow buttons on each row, calls PUT with new `sort_order` (same pattern as sub-spec b BOM lines).
+
+#### 3. Constraint rules section
+
+DataTable of ConstraintRule via `/api/manufacturing/constraint-rule?product_id=<id>`:
+
+| Column | Display |
+|---|---|
+| Description | Rule description text (translatable) |
+| Condition | Rendered summary of `condition_json` (e.g., "When frame_type = SK23") |
+| Action | Badge: `restrict_values` / `exclude_combination` / `require_value` / `set_default` |
+| Target | Rendered summary of `action_data` (e.g., "→ legs must be H2.5") |
+| Priority | Number |
+| Active | Toggle (updates `is_active` in-place via command) |
+
+**Add/Edit dialog** — `CrudForm` with cascading structure:
+
+- Description (text)
+- Condition editor: attribute select → operator select → value picker (options from the selected attribute's `allowed_values`)
+- Action type (select) → reveals action-specific editor:
+  - `restrict_values` → target attribute + list of allowed values
+  - `exclude_combination` → target attribute + list of disallowed values + error message
+  - `require_value` → target attribute + forced value + warning message
+  - `set_default` → target attribute + default value
+- Priority (number)
+- Active (toggle)
+
+Save serializes to `condition_json` and `action_data` matching the Zod schemas in `data/validators.ts`.
+
+#### 4. Resolution preview panel
+
+- Collapsible section below the rules table
+- Dynamic form generated from active ConfigAttribute records — one field per attribute, grouped by `attribute_group`. Custom `ConfigurationForm` component that maps `attribute_type` to OM primitives:
+
+| attribute_type | Input Component | Data Source |
+|---|---|---|
+| `enum` | `Select` (from `@open-mercato/ui/primitives`) | `allowed_values` array |
+| `numeric_range` | Number input with min/max/step | `allowed_values` `{min, max, step}` |
+| `boolean` | Toggle | — |
+| `text` | Text Input | — |
+| `material` | Searchable combobox | `/api/catalog/products?category_id=<material_filter_id>` |
+
+- "Resolve" button → `POST /api/manufacturing/configurator/resolve` with the form snapshot
+- Result display area:
+  - **Resolved conditions** — key→value table (what variant_condition values BOM/routing will match against)
+  - **Applied rules** — list of rule descriptions that fired, in priority order
+  - **Errors** — red banner(s) for `exclude_combination` violations (blocking)
+  - **Warnings** — yellow banner(s) for forced values, missing mandatory attributes (non-blocking)
+
+Resolution preview is read-only — it does not persist anything. Purely a diagnostic tool for the admin configuring rules.
+
+#### 5. ConfigurationForm export for sub-specs b/c
+
+`ConfigurationForm` is reused by sub-specs b and c for variant/config input in their respective panels (BOM explosion, routing time rollup).
+
+**Export path**: `packages/manufacturing/src/modules/configurator/components/ConfigurationForm.tsx`
+
+**Props contract**:
+```typescript
+interface ConfigurationFormProps {
+  productId: string;               // loads ConfigAttributes for this product
+  onSubmit: (snapshot: Record<string, unknown>) => void;  // form values keyed by attribute key
+  submitLabel?: string;            // button text (default: "Resolve")
+  disabled?: boolean;              // disables all inputs + submit
+}
+```
+
+The component is self-contained: it fetches `ConfigAttribute` records for the product, renders grouped inputs per `attribute_type` (see table above), and calls `onSubmit` with the completed snapshot. Sub-spec b passes the snapshot to the explosion endpoint; sub-spec c passes it to time rollup.
+
+#### 6. Namespace export for sub-specs b/c
+
+Export a tiny hook `useConfigAttributeKeys(productId): { keys: string[]; ready: boolean }` from `packages/manufacturing/src/modules/configurator/components/useConfigAttributeKeys.ts`. BOM tab (sub-spec b) and Routing tab (sub-spec c) use this hook to validate `variant_condition` keys at edit time and display "unknown key" warnings. No API design required — uses the existing `/api/manufacturing/config-attribute?product_id=<id>` endpoint.
+
+#### 7. Readiness checklist integration
+
+Expose `useIsConfiguratorReady(productId): boolean` — returns `true` when `configuration_type === 'rule_based'` and at least one ConfigAttribute exists. The foundation overview tab calls this to flip configurator ○ → ✓.
+
+#### 8. Unit tests
+
+Already completed as part of Phase C algorithm work (`lib/config-resolution.ts`, `lib/namespace-validator.ts` — 50 tests total). No additional unit tests required for the UI layer beyond the existing coverage.
+
+#### 9. Integration tests
+
+Tests in `packages/manufacturing/src/modules/configurator/__integration__/configurator-tab.spec.ts`. Playwright, API-first setup + UI navigation.
+
+| ID | Scenario | Validates |
+|---|---|---|
+| D-UI-1 | Open product detail with `configuration_type='rule_based'` and no attributes → verify Configurator tab shows empty state → click "Add Attribute" → create enum attribute (key, label, values) → verify appears in table | Empty state, Attribute CRUD — enum |
+| D-UI-2 | Create attribute of each type (enum, numeric_range, boolean, text, material) → open resolution preview → verify `ConfigurationForm` renders one type-appropriate input per attribute, grouped by `attribute_group` | ConfigurationForm component — all 5 attribute_type branches |
+| D-UI-3 | Create constraint rule with `require_value` action → run resolution preview with triggering condition → verify resolved conditions show forced value and warnings list includes the rule | Constraint rule CRUD, resolution engine wired to UI |
+| D-UI-4 | Create constraint rule with `exclude_combination` action → resolve with the excluded combo → verify red error banner (blocking) and resolution response indicates error | exclude_combination display, error vs warning distinction |
+| D-UI-5 | Set `configuration_type='variant_based'` on the extension → open Configurator tab → verify message "This product uses variant-based configuration..." with catalog link instead of attribute/rule UI | Conditional tab body |
+| D-UI-6 | Set `configuration_type='none'` on the extension → verify Configurator tab not rendered in tab bar (shell decision) | Shell-side tab visibility contract |
+| D-UI-7 | Create 3 attributes → reorder via up/down buttons → verify `sort_order` updated and display order reflects change | Reorder without drag-and-drop |
+
+**Testable outcome:** Configurator tab visible in product detail for `rule_based` products. All unit and integration tests pass. Other sub-spec UIs (b and c) can read the attribute key namespace via the exported hook.
 
 ## Risks & Impact Review
 
@@ -419,7 +531,7 @@ defaultRoleFeatures: {
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-05 | All module files, entities, validators, commands, CRUD routes, events, ACL, setup, search, translations, DI |
 | Phase B — Resolution Engine + Namespace Validation | Done | 2026-04-05 | config-resolution.ts pure function, resolve endpoint, namespace-validator.ts, validate-namespace endpoint |
-| Phase C — UI Widget + Tests | Partial | 2026-04-05 | Unit tests done (50 passing). Migration written. UI widget deferred to manufacturing-ui spec |
+| Phase C — UI Widget + Tests | In Progress | 2026-04-05 | Unit tests done (50 passing). ConfiguratorTab UI detailed in this spec (2026-04-11 refactor — migrated from foundation UI spec). Implementation not started |
 
 ### Phase A — Detailed Progress
 - [x] Step 1: Create `src/modules/configurator/` with index.ts, acl.ts, events.ts, setup.ts, di.ts, search.ts, translations.ts
@@ -442,11 +554,19 @@ defaultRoleFeatures: {
 - [x] Unit tests for namespace-validator.ts (5 tests)
 - [x] Unit tests for validators.ts (11 tests)
 - [x] Module structure tests (14 tests)
-- [ ] UI widget (ConfiguratorTab.tsx) — deferred
+- [ ] ConfiguratorTab.tsx component (attributes section, rules section, resolution preview)
+- [ ] ConfigurationForm dynamic component (5 attribute_type input branches, exported for sub-spec b/c)
+- [ ] useConfigAttributeKeys hook (for sub-spec b/c namespace validation)
+- [ ] ConfigurationForm props contract verified against sub-spec b/c usage
+- [ ] useIsConfiguratorReady hook (for foundation Overview readiness checklist)
+- [ ] Integration tests D-UI-1 through D-UI-7
 
 ---
 
 ## Changelog
+
+### 2026-04-11
+- **Phase C expansion**: Migrated detailed Configurator tab UI spec from `2026-04-05-manufacturing-ui-foundation.md` (foundation UI spec refactor). Added ConfiguratorTab component contract, Attributes/Rules section layouts, ConfigurationForm type→input mapping, useConfigAttributeKeys + useIsConfiguratorReady hook exports, and 7 integration tests (D-UI-1..7). Phase C status: Partial → In Progress.
 
 ### 2026-04-06
 - Wording improvements throughout

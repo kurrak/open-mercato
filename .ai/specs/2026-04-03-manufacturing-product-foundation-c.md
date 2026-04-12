@@ -2,7 +2,7 @@
 
 | Field | Value |
 |-------|-------|
-| **Status** | Implemented |
+| **Status** | In Progress |
 | **Created** | 2026-04-04 |
 | **Parent spec** | `2026-04-03-manufacturing-product-foundation.md` |
 | **Mode** | External Extension (`packages/manufacturing`, module `routing`) |
@@ -452,27 +452,159 @@ defaultRoleFeatures: {
 
 ### Phase C: UI Widget + Tests
 
-1. Create `backend/products/RoutingTab.tsx` — widget injected into product detail page
-2. Operation list with time columns, work center badges, payment type indicators
-3. Dependency graph visualization (show parallel paths and convergence points)
-4. Unit tests for `lib/dependency-graph.ts`:
-   - Linear chain (A→B→C) — valid
-   - Parallel paths converging (A→D, B→D, C→D) — valid
-   - Cycle (A→B→A) — rejected with error
-   - Disconnected operations — valid (Graceful Incompleteness)
-   - Self-reference — rejected
-5. Unit tests for `lib/time-rollup.ts`:
-   - Single operation with all 5 time components
-   - Multiple operations with variant overrides
-   - Efficiency adjustment (80% = longer time)
-   - Null times treated as 0
-6. Integration tests:
-   - Create routing with 3 operations → add dependencies → validate DAG
-   - Create routing with parallel paths converging → validate → compute time rollup
-   - Attempt to create circular dependency → verify rejection
-   - Create OperationTemplateVariant → verify time rollup applies override
+**Depends on:**
+- `2026-04-05-manufacturing-ui-foundation.md` Phase 3 (tab shell, `ManufacturingTabsLayout`, detail page)
+- `2026-04-05-manufacturing-ui-foundation.md` Phase 2 (WorkCenter master data page — operations pick work centers from here)
+- Sub-spec d Phase C (`useConfigAttributeKeys` hook — used for OperationTemplateVariant variant_condition validation)
 
-**Testable outcome:** Routing tab visible in product detail. All unit and integration tests pass.
+#### 1. RoutingTab component
+
+- **Location**: `packages/manufacturing/src/modules/routing/components/RoutingTab.tsx` (exported and consumed by the product detail page from `2026-04-05-manufacturing-ui-foundation.md`)
+- **Props**: `{ productId: string; extension: ProductManufacturingExtension }`
+- **ACL feature**: `routing.view` for reads, `routing.create`/`routing.update`/`routing.delete` for writes
+
+Empty state when the product has no RoutingTemplate: "No routing defined. Create routing →" with primary button that opens the RoutingTemplate create dialog.
+
+#### 2. Routing selector
+
+If the product has multiple RoutingTemplates (via multiple PMs), show a dropdown at the top to switch between them. Single-routing products skip the selector and render operations directly.
+
+#### 3. Operations DataTable
+
+`DataTable` of OperationTemplate rows for the selected routing template:
+
+| Column | Display |
+|---|---|
+| Sequence | Number (from `sort_order`) |
+| Name | Operation name (translatable) |
+| Work center | `WorkCenter.name` + code badge, or "No work center" placeholder with warning icon |
+| Setup time | Minutes or "—" |
+| Run time | Minutes or "—" |
+| Teardown time | Minutes or "—" |
+| Payment type | Badge: `hourly` / `piecework` / `mixed` |
+| Rate | Amount with currency or "—" |
+| Subcontracted | Flag icon if true |
+
+**Row actions** (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+**Header action**: "Add Operation"
+
+Reorder uses `sort_order` increment/decrement via API — same pattern as BOM lines (no drag-and-drop).
+
+#### 4. Operation CRUD dialogs
+
+**Add / Edit Operation** → `CrudForm` dialog with:
+
+- Name (translatable text)
+- Work center: searchable combobox of WorkCenter (master data from foundation Phase 2) with "Create new" shortcut → inline dialog that creates the work center without leaving the page
+- Setup / run / teardown / wait / move time (all numeric, nullable per Graceful Incompleteness — null times display as "—" and are treated as 0 in calculations)
+- Payment type (select: `hourly` / `piecework` / `mixed`)
+- Hourly rate (number, shown when payment_type ∈ {hourly, mixed})
+- Piece rate (number, shown when payment_type ∈ {piecework, mixed})
+- Subcontracted (toggle)
+- Factory zone (combobox of FactoryZone, optional)
+- `sort_order` (auto-assigned, editable)
+
+Save always succeeds — null work center or null times produce warning icons on the row, not save errors.
+
+#### 5. OperationTemplateVariant inline section
+
+Expand arrow on any operation row reveals nested variant override rows. Each override shows:
+
+- Variant identifier (CatalogProductVariant name or raw `variant_condition` keys)
+- Time overrides (setup / run / teardown — any subset)
+- Rate overrides (hourly / piece — any subset)
+- Work center override (or "—")
+
+**Inline actions**: add override (dialog), edit (dialog), delete (confirm). Dialog enforces the XOR constraint — exactly one of `catalog_product_variant_id` or `variant_condition` must be set. `variant_condition` keys validated against `useConfigAttributeKeys(productId)` from sub-spec d — unknown keys produce a warning badge (non-blocking).
+
+#### 6. Dependency section
+
+Two views side by side: a read-only flow visualization and a CRUD list for editing.
+
+##### Flow visualization (read-only)
+
+Uses the topological sort from `lib/dependency-graph.ts` to render operations grouped by execution level (operations with no unresolved predecessors = level 0, their successors = level 1, etc.). Parallel operations at the same level shown side by side. Connector lines/arrows show convergence points.
+
+Example render:
+
+```
+┌─ Foam lamination (WC-FOAM, 45 min)
+├─ Cover sewing (WC-SEW, 60 min)
+├─ Frame assembly (WC-FRAME, 30 min)
+├─ Side panel gluing (WC-SIDE, 25 min)
+└─→ Upholstery (WC-UPHO, 90 min)
+     └─→ Quality check (WC-QC, 15 min)
+          └─→ Packaging (WC-PACK, 45 min)
+```
+
+Rendered with plain HTML/CSS (indented divs with connector lines). Each node shows: operation name, work center code, run time. Parallel paths visually grouped at the same indentation level. Convergence points marked with arrow connectors from all predecessors. Operations without dependencies shown at level 0 with a note "No dependencies — follows sequence order."
+
+**No graph library in this phase.** Future: replace with an interactive editor (React Flow or equivalent) where users can drag to create/remove dependencies visually.
+
+##### Dependency list (CRUD)
+
+Below the flow visualization, a simple list:
+
+```
+Dependencies:
+• Foam lamination → Upholstery (finish-to-start, required)
+• Cover sewing → Upholstery (finish-to-start, required)
+• Frame assembly → Upholstery (finish-to-start, required)
+```
+
+- **Add dependency**: dialog with predecessor + successor operation selects (both scoped to the current routing) + dependency type (`finish_to_start` / `start_to_start` / `finish_to_finish` / `start_to_finish`) + strength (`required` / `preferred`)
+- **Delete dependency** (confirm dialog)
+- **Cycle detection**: if adding a dependency would create a cycle, the dialog blocks save and displays the cycle path (e.g., "Circular reference: A → B → A"). Server-side validation also runs via the existing `lib/dependency-graph.ts` on every dependency write
+- **`preferred` strength behavior**: both `required` and `preferred` dependencies render identically in the flow visualization (same arrows) and are treated identically in time rollup (both count for critical path). The distinction is metadata for future scheduling — `preferred` indicates a soft constraint that a scheduler may relax under capacity pressure. For the current UI phase, the only visual difference is a "(preferred)" label on the dependency row in the CRUD list. No scheduling engine exists yet to exploit the distinction
+
+#### 7. Time rollup panel
+
+Collapsible section at the bottom of the tab:
+
+- "Calculate Time" button
+- Quantity input (default: 1)
+- For products with `configuration_type ∈ {variant_based, rule_based}`: variant/config selector (reuses `ConfigurationForm` from sub-spec d for rule_based)
+- **Result display**:
+  - Total occupation time (sum of all operations)
+  - Total lead time (critical path through the DAG)
+  - Per-operation breakdown (table: operation, duration, start level, end level)
+  - **Warnings panel** (collapsible): operations with null run_time, operations without work centers, disconnected operations, etc.
+
+#### 8. Readiness checklist integration
+
+Expose `useIsRoutingReady(productId): boolean` — returns `true` when at least one RoutingTemplate with at least one non-soft-deleted OperationTemplate exists for the product. Foundation overview tab calls this to flip routing ○ → ✓.
+
+Also expose `useRoutingName(productId): { name: string | null; ready: boolean }` for the production method cards on the overview tab to display linked routing names.
+
+#### 9. Unit tests
+
+Already completed as part of Phase B algorithm work (`lib/dependency-graph.ts` — 10 tests, `lib/time-rollup.ts` — 8 tests, validators — 13 tests). No additional unit tests required for the UI layer.
+
+#### 10. Integration tests
+
+Tests in `packages/manufacturing/src/modules/routing/__integration__/routing-tab.spec.ts`. Playwright, API-first setup + UI navigation.
+
+| ID | Scenario | Validates |
+|---|---|---|
+| C-UI-1 | Open product detail with no routing → verify Routing tab shows "No routing defined" empty state → click "Create routing" → create RoutingTemplate → verify empty operations table renders | Empty state, RoutingTemplate create |
+| C-UI-2 | Open Add Operation dialog → create operation with work center from combobox → verify row appears in table with work center badge | Routing CRUD, work center picker from master data |
+| C-UI-3 | Create operation with null run_time → verify "—" display in run time column with tooltip "Time not set" → save succeeds | Graceful Incompleteness — null times |
+| C-UI-4 | Open Add Operation dialog → click "Create new work center" shortcut → verify inline dialog creates work center → verify new work center selected in outer dialog | Cross-page master data shortcut, dialog stacking |
+| C-UI-5 | Add 4 operations → add dependencies forming parallel→converging graph (3 → 1 → 2) → verify flow visualization renders parallel paths and convergence arrows | Flow visualization, topological sort rendering |
+| C-UI-6 | Add dependency A→B and B→C, then attempt to add C→A → verify dialog blocks save with cycle error showing the cycle path | Cycle detection in UI dialog |
+| C-UI-7 | Click "Calculate Time" on a routing with 3 operations (one with null run_time) → verify result shows total time, critical path, per-operation breakdown, and warning about null run_time | Time rollup with incomplete data |
+| C-UI-8 | Create OperationTemplateVariant with `variant_condition` key not in ConfigAttributes → verify warning badge on row → save succeeds | Namespace validation (advisory), OperationTemplateVariant CRUD |
+| C-UI-9 | Soft-delete a referenced work center → reload routing tab → verify affected operations show "work center deleted" indicator but still render | Soft-delete cascading visibility |
+
+#### 11. End-to-end cross-module test (owned by this sub-spec)
+
+Because routing is recommended as the last tab to implement, this sub-spec owns the full vertical slice integration test that exercises the whole product foundation UI stack:
+
+| ID | Scenario | Validates |
+|---|---|---|
+| C-E2E-1 | Create catalog product → enable manufacturing → set `configuration_type='rule_based'` → create 3 ConfigAttributes (sub-spec d UI) → create BomHeader with 3 BomLines including one with `variant_condition` (sub-spec b UI) → create RoutingTemplate with 3 operations and 2 dependencies (this sub-spec UI) → create ProductionMethod linking the BOM and routing → return to Overview tab → verify readiness checklist shows all ✓ → verify production method card shows linked BOM and routing names with clickable links that switch tabs | End-to-end vertical slice across foundation + sub-specs b/c/d, readiness checklist propagation, PM card wiring |
+
+**Testable outcome:** Routing tab visible in product detail. Add operations with work center selection. See flow visualization. Define dependencies with cycle protection. Calculate time rollup. Overview tab reflects routing readiness. Full cross-module E2E test passes. All unit and integration tests pass.
 
 ## Risks & Impact Review
 
@@ -539,12 +671,15 @@ defaultRoleFeatures: {
 |-------|--------|------|-------|
 | Phase A — Work Centers + Entities | Done | 2026-04-04 | 6 entities, 17 commands, 6 CRUD routes, migration |
 | Phase B — DAG Validation + Time Rollup | Done | 2026-04-04 | Pure DAG validation (Kahn's algo), time rollup with critical path, 2 custom endpoints |
-| Phase C — Widget + Tests | Done | 2026-04-04 | RoutingTab placeholder, 31 new tests (DAG: 10, time rollup: 8, validators: 13). Total package: 136 tests |
+| Phase C — Widget + Tests | In Progress | 2026-04-04 | Algorithm + unit tests done (31 tests). RoutingTab placeholder landed in foundation spec Phase 3. Detailed RoutingTab UI + E2E cross-module test migrated into this spec (2026-04-11 refactor) — implementation not started |
 | Review fixes | Done | 2026-04-06 | Removed production_method_id from RoutingTemplate entity/validator/command/route. Added 9 missing CRUD events. Migration regenerated |
 
 ---
 
 ## Changelog
+
+### 2026-04-11
+- **Phase C expansion**: Migrated detailed Routing tab UI spec from `2026-04-05-manufacturing-ui-foundation.md` (foundation UI spec refactor). Added RoutingTab component contract, operations DataTable layout, Operation CRUD dialogs, OperationTemplateVariant inline section, flow visualization + dependency list CRUD with cycle detection, time rollup panel, readiness hook exports (`useIsRoutingReady`, `useRoutingName`), 9 integration tests (C-UI-1..9), and 1 cross-module end-to-end test (C-E2E-1) owned by this sub-spec. Phase C status: Done (placeholder only) → In Progress. Declared dependencies on foundation Phase 3 + Phase 2 (WorkCenter) + sub-spec d Phase C.
 
 ### 2026-04-06
 - Review fixes: removed production_method_id from RoutingTemplate (FK direction reversal — PM owns routing_template_id). Added factory_zone, operation_template_variant, operation_dependency CRUD events. Status → In Progress

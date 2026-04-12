@@ -1,31 +1,35 @@
-# Manufacturing UI
+# Manufacturing UI Foundation
 
 | Field | Value |
 |-------|-------|
-| **Status** | Draft |
+| **Status** | In Progress |
 | **Created** | 2026-04-05 |
-| **Related** | `2026-04-03-manufacturing-product-foundation.md` (main spec), sub-specs a–d (entity/API layer) |
+| **Related** | `2026-04-03-manufacturing-product-foundation.md` (main spec), sub-specs a–d (entity/API + per-tab UI) |
 | **Mode** | External Extension (`packages/manufacturing`) |
-| **Builds on** | `@open-mercato/ui/backend` (CrudForm, DataTable, DetailTabsLayout), catalog widget injection |
+| **Builds on** | `@open-mercato/ui/backend` (CrudForm, DataTable), catalog widget injection |
 
 ---
 
 ## TLDR
 
+**Scope of this spec:** the cross-cutting UI foundation for manufacturing — navigation, product list, product detail shell + Overview tab, and master data pages. **Per-tab UI (Configurator, BOM, Routing) lives in the respective sub-specs:**
+- Configurator tab UI → sub-spec d (`2026-04-03-manufacturing-product-foundation-d.md`, Phase C)
+- BOM tab UI → sub-spec b (`2026-04-03-manufacturing-product-foundation-b.md`, Phase C)
+- Routing tab UI → sub-spec c (`2026-04-03-manufacturing-product-foundation-c.md`, Phase C)
+
 **Key Points:**
-- Build the complete backend UI for the manufacturing module: product list, tabbed product detail, master data management pages, and catalog integration widget
-- Manufacturing product detail page uses `DetailTabsLayout` with 4 tabs: Overview, BOM, Routing, Configurator (conditional)
+- Build the foundation backend UI for manufacturing: sidebar nav, product list, tabbed product detail shell with Overview tab, master data CRUD pages, catalog integration widget
+- Manufacturing product detail page uses a local `ManufacturingTabsLayout` with 4 tabs — Overview is fully owned by this spec; BOM, Routing, Configurator tab bodies are placeholder until their sub-specs implement them
 - UI follows the Graceful Incompleteness principle — progress indicators instead of error banners, save always succeeds, warnings on use not on save
-- All entity creation that's contextual (BomLineVariant, OperationTemplateVariant, OperationDependency) is inline within parent tabs — no standalone pages
-- Master data (WorkCenter, FactoryZone, UnitOfMeasure) gets standalone list+CRUD pages
+- Master data (WorkCenter, FactoryZone, UnitOfMeasure) gets standalone list+CRUD pages — shared across all products
+- Tab shell, readiness checklist, and cross-module layout conventions defined here and reused by sub-specs b/c/d
 
 **Scope:**
 - 1 product list page with product picker dialog
-- 1 tabbed product detail page (4 tabs)
+- 1 tabbed product detail page shell + Overview tab (other tab bodies delegated to sub-specs b/c/d)
 - 3 standalone master data pages (work centers, factory zones, UoM)
 - 1 catalog product widget injection (enable/view manufacturing)
 - Sidebar navigation with 4 items
-- Seed data hook (minimal generic example)
 
 ---
 
@@ -134,12 +138,18 @@ Injected into the main sidebar via the existing `product_master.injection.manufa
 
 **Tabs:**
 
-| Tab | Label | Module | Condition |
-|---|---|---|---|
-| Overview | Overview | product_master | Always |
-| BOM | Bill of Materials | bom | Always |
-| Routing | Routing | routing | Always |
-| Configurator | Configurator | configurator | Only when configuration_type = 'rule_based'. Message for 'variant_based'. Hidden for 'none' |
+| Tab | Label | Module | Condition | UI owner |
+|---|---|---|---|---|
+| Overview | Overview | product_master | Always | **This spec (Phase 3)** |
+| BOM | Bill of Materials | bom | Always | Sub-spec b, Phase C |
+| Routing | Routing | routing | Always | Sub-spec c, Phase C |
+| Configurator | Configurator | configurator | Only when configuration_type = 'rule_based'. Message for 'variant_based'. Hidden for 'none' | Sub-spec d, Phase C |
+
+**Tab shell contract** (this spec owns — consumed by sub-specs b/c/d):
+- `ManufacturingTabsLayout` renders the tab bar and delegates tab body rendering to the current tab's component
+- Each sub-spec exports its tab body component (`BomTab`, `RoutingTab`, `ConfiguratorTab`) from `packages/manufacturing/src/modules/<module>/components/` — imported by the detail page shell
+- Tab components receive `{ productId, extension }` props and manage their own loading/error/flash state
+- Readiness checklist hooks: sub-spec b/c/d each export a tiny `useIsReady(productId)` helper the overview tab calls; non-trivial sub-spec failures show ○ without blocking the shell
 
 ### Overview Tab
 
@@ -172,180 +182,9 @@ Product Readiness
 ```
 Computed on page load for this single product. Each item is a simple existence/count check against the API. ✓ = present, ○ = not yet defined. No red/error states.
 
-### BOM Tab
+### BOM / Routing / Configurator Tabs
 
-**BOM header selector:** Two modes:
-- **Auto-resolve** (default): when user provides config/variant in the explosion panel, system calls `POST /api/manufacturing/production-method/resolve` to find the best PM, then uses its linked `bom_header_id`. User doesn't manually pick a BOM.
-- **Manual override**: dropdown showing all BomHeaders for this product (production + packaging). For power users or when auto-resolution returns no match.
-
-**BOM tree view:**
-- Hierarchical expandable tree: BomHeader → BomLines
-- Each line row shows:
-
-| Field | Display |
-|---|---|
-| Material | Product name (link to catalog) or "Material not selected" placeholder |
-| Line type | Badge: material / semi_product |
-| Quantity | `net_qty (gross_qty)` or "—" if null |
-| UoM | Code or "—" |
-| Scrap % | Percentage or "0%" |
-| Variant condition | Badge with key summary (e.g., "seat_type: SD01, SD02") or empty |
-| Operation | Linked operation name or "—" |
-| Date range | valid_from – valid_to or "Always" |
-| Consumable | Flag icon if true |
-| Phantom | Ghost icon on child BomHeader rows where is_phantom=true |
-
-**Inline actions per line:** Edit (dialog), Delete (confirm), Reorder (up/down arrow buttons — no drag-and-drop library in OM, use simple `sort_order` increment/decrement via API)
-
-**Add line:** "Add Material" / "Add Sub-assembly" buttons → dialog with material picker (catalog product combobox), quantity, UoM, scrap %, variant condition editor, operation linker
-
-**BomLineVariant (expandable per line):**
-- Expand arrow on lines → shows variant override rows
-- Each override: variant identifier (variant name or condition keys), quantity override, material override, unit override
-- Inline add/edit/delete
-
-**BOM explosion panel:**
-
-The explosion input form adapts to what's defined — less configuration = simpler form. The "Explode BOM" button always works regardless of completeness.
-
-| Product State | Explosion Input Form |
-|---|---|
-| `configuration_type = 'none'`, no variant conditions on any BomLine | Just "Explode BOM" button + effective date picker. No variant/config input needed — all lines always active |
-| `configuration_type = 'variant_based'`, BomLineVariants exist | Variant picker (CatalogProductVariant select) + effective date. If no BomLineVariant records exist yet: picker still shown but with note "No variant-specific overrides defined — all variants produce the same material list". If BomLines have variant_condition values that don't match any existing CatalogProductVariant option values: warning "N lines reference variant values not found in product variants" with list of orphaned keys/values |
-| `configuration_type = 'rule_based'`, ConfigAttributes defined | Dynamic attribute form (one field per attribute, type-appropriate input) + effective date. Calls configurator resolve first, then explodes with resolved conditions. If BomLines have variant_condition keys not matching any ConfigAttribute.key: warning "N lines reference unknown configuration keys" with list of orphaned keys |
-| `configuration_type = 'rule_based'`, no ConfigAttributes yet | "Explode BOM" button + effective date + message "No configuration attributes defined — explosion will include all unconditional BOM lines." Lines with variant_condition are skipped, warning shown in result |
-| Any type, BomLines have variant_conditions but no configurator/variants | "Explode BOM" button + effective date + warning "N lines have variant conditions but no configuration provided — conditional lines will be skipped" |
-
-- Effective date picker (defaults to today) — shown in all cases for date-effective line filtering
-- Submit → async job → progress indicator → result table:
-  - Flat material list: material name, quantity, UoM, gross quantity, level, source BOM
-  - Warnings panel (collapsible): "2 lines skipped: null material_id", "3 conditional lines skipped: no configuration provided", etc.
-
-### Routing Tab
-
-**Routing selector:** If product has multiple RoutingTemplates (via multiple PMs), dropdown at top.
-
-**Operations DataTable:**
-
-| Column | Display |
-|---|---|
-| Sequence | Number |
-| Name | Operation name |
-| Work center | WorkCenter name + code badge, or "No work center" |
-| Setup time | Minutes or "—" |
-| Run time | Minutes or "—" |
-| Teardown time | Minutes or "—" |
-| Payment type | Badge: hourly / piecework / mixed |
-| Rate | Amount or "—" |
-| Subcontracted | Flag icon if true |
-
-**Inline actions:** Add operation (dialog with work center combobox + "Create new" shortcut), Edit, Delete, Reorder (up/down arrow buttons, same pattern as BOM lines)
-
-**OperationTemplateVariant (expandable per operation):**
-- Expand arrow → variant override rows
-- Each override: variant identifier, time overrides, rate overrides, work center override
-- Inline add/edit/delete
-
-**Dependency section:**
-
-Two views: a read-only flow visualization and a CRUD list for editing.
-
-*Flow visualization (read-only, temporary — to be replaced with interactive graph editor in future):*
-
-Uses the topological sort from `lib/dependency-graph.ts` to render operations grouped by execution level (operations with no unresolved predecessors = level 0, their successors = level 1, etc.). Parallel operations at the same level shown side-by-side. Connector lines/arrows show convergence points.
-
-```
-┌─ Foam lamination (WC-PIAN, 45 min)
-├─ Cover sewing (WC-SZWAL, 60 min)
-├─ Frame assembly (WC-SKRZ, 30 min)
-├─ Side panel gluing (WC-BOCZKI, 25 min)
-└─→ Upholstery (WC-TAPIC, 90 min)
-     └─→ Quality check (WC-KJ, 15 min)
-          └─→ Packaging (WC-PAK, 45 min)
-```
-
-Rendered with plain HTML/CSS (indented divs with connector lines). Each node shows: operation name, work center code, run time. Parallel paths visually grouped at the same indentation level. Convergence points marked with arrow connectors from all predecessors. Operations without dependencies shown at level 0 with a note "No dependencies — follows sequence order."
-
-No graph library needed for initial implementation. Future: replace with interactive graph editor (React Flow or similar) where users can drag to create/remove dependencies visually.
-
-*Dependency list (CRUD):*
-
-Below the flow visualization:
-  ```
-  Dependencies:
-  • Foam lamination → Upholstery (finish-to-start, required)
-  • Cover sewing → Upholstery (finish-to-start, required)
-  • Frame assembly → Upholstery (finish-to-start, required)
-  ```
-- Add dependency: select predecessor + successor from operations in this routing + type + strength
-- Delete dependency (confirm)
-- Cycle detection: if adding a dependency would create a cycle, show error in dialog before save
-
-**Time rollup panel:**
-- "Calculate Time" button
-- Quantity input (default: 1)
-- For variant products: variant/config selector
-- Result: total occupation time, total lead time (critical path), per-operation breakdown
-- Warnings panel for incomplete data
-
-### Configurator Tab
-
-**Visibility:** Only shown when `configuration_type = 'rule_based'`.
-
-For `variant_based` products: tab shows message "This product uses variant-based configuration. Manage variants in the Catalog." with link to catalog product.
-
-For `none`: tab not rendered in tab bar.
-
-**Attributes section:**
-
-DataTable of ConfigAttribute:
-
-| Column | Display |
-|---|---|
-| Key | Technical key (monospace) |
-| Label | Display name |
-| Type | Badge: enum / numeric_range / boolean / text / material |
-| Values | Comma-separated allowed values preview, or "Live catalog" for material type |
-| Mandatory | Checkbox icon |
-| Group | Group label |
-| Order | Number |
-
-Actions: Add attribute (dialog), Edit (dialog), Delete (confirm), Reorder
-
-**Constraint rules section:**
-
-DataTable of ConstraintRule:
-
-| Column | Display |
-|---|---|
-| Description | Rule description text |
-| Condition | Summary of condition_json (e.g., "When frame = SK23") |
-| Action | Badge: restrict / exclude / require / default |
-| Target | Summary of action_data (e.g., "→ legs must be H2.5") |
-| Priority | Number |
-| Active | Toggle |
-
-Actions: Add rule (dialog), Edit (dialog), Delete (confirm)
-
-**Resolution preview panel:**
-- "Test Configuration" section
-- Dynamic form generated from ConfigAttribute records — one field per active attribute. Custom `ConfigurationForm` component that maps `attribute_type` to OM input primitives:
-
-| attribute_type | Input Component | Data Source |
-|---|---|---|
-| enum | Select (from `@open-mercato/ui/primitives`) | `allowed_values` array |
-| numeric_range | Number input with min/max/step | `allowed_values` object `{min, max, step}` |
-| boolean | Toggle/Checkbox | — |
-| text | Text Input | — |
-| material | Searchable combobox | CatalogProduct API filtered by `material_filter_id` category |
-
-Form renders dynamically from loaded ConfigAttribute records, grouped by `attribute_group`. No hardcoded fields — form structure is entirely data-driven.
-- "Resolve" button → calls `/api/manufacturing/configurator/resolve`
-- Result display:
-  - Resolved conditions (key → value table)
-  - Applied rules (list of rule descriptions that fired)
-  - Errors (red, blocking — invalid combinations)
-  - Warnings (yellow — forced changes, missing attributes)
+Tab body UIs are specified in their respective sub-specs (Phase C of each — see TLDR for links). Until each sub-spec's UI part lands, the respective tab body is a placeholder and the readiness checklist for that section shows ○.
 
 ## Master Data Pages
 
@@ -429,18 +268,18 @@ All UI follows the Graceful Incompleteness principle from the parent spec:
 
 ```
 Phase 1 (List + Catalog Widget)
-  └─→ Phase 3 (Detail Shell)
-       └─→ Phase 4 (Configurator Tab)
-            ├─→ Phase 5 (BOM Tab)
-            └─→ Phase 6 (Routing Tab)
+  └─→ Phase 3 (Detail Shell + Overview Tab)
 
-Phase 2 (Master Data) ← independent, but must complete before Phase 5+6
-                         (BOM needs UoM picker, Routing needs WorkCenter picker)
-
-Phase 7 (Seed Data) ← after all phases
+Phase 2 (Master Data) ← independent, runs in parallel with Phase 1/3
+                         (consumed later by sub-spec b BOM UI and sub-spec c Routing UI)
 
 Pre-requisite: create packages/manufacturing/AGENTS.md before Phase 1
                (use create-agents-md skill)
+
+Handed off to sub-specs (not owned by this spec):
+  Sub-spec d Phase C — Configurator tab UI (depends on Phase 3)
+  Sub-spec b Phase C — BOM tab UI (depends on Phase 3, Phase 2 UoM, and sub-spec d Phase C for namespace validation)
+  Sub-spec c Phase C — Routing tab UI (depends on Phase 3, Phase 2 WorkCenter, and sub-spec d Phase C for namespace validation)
 ```
 
 ### Pre-requisite: AGENTS.md
@@ -464,7 +303,7 @@ Create `packages/manufacturing/AGENTS.md` using the `create-agents-md` skill. Co
 2. Factory zones list + dialog CRUD
 3. Units of measure list + dialog CRUD
 
-**Testable outcome:** Full CRUD on all three master data entities via dedicated pages. Must complete before Phase 5+6 — BOM tab needs UoM picker, Routing tab needs work center picker.
+**Testable outcome:** Full CRUD on all three master data entities via dedicated pages.
 
 **Can run in parallel with Phase 3** — no dependency between master data pages and detail shell.
 
@@ -472,75 +311,31 @@ Create `packages/manufacturing/AGENTS.md` using the `create-agents-md` skill. Co
 
 **Depends on:** Phase 1 (product list links to detail page)
 
-1. Create product detail page with `DetailTabsLayout`
+1. Create product detail page with `ManufacturingTabsLayout` (local component, ~50 lines, built on OM Button variant="ghost" tab pattern)
 2. Create `FormHeader` with product name, SKU, procurement type badge, "Edit in Catalog →" action
 3. Overview tab: read-only product identity, editable manufacturing fields, production method list
-4. Readiness checklist component — initially shows: manufacturing enabled ✓, base UoM ✓, PM count ✓, BOM ○, routing ○, configurator ○ (updated as tabs land in later phases)
-5. Production method cards: show "No BOM" / "No routing" placeholders — linked names wired when BOM+routing tabs land
+4. Readiness checklist component — initially shows: manufacturing enabled ✓, base UoM ✓, PM count ✓, BOM ○, routing ○, configurator ○ (updated as sub-spec tab UIs land)
+5. Production method cards: show "No BOM" / "No routing" placeholders — linked names wired by sub-spec b/c when their Phase C UIs land
+6. BOM/Routing/Configurator tab bodies: placeholder components ("Coming soon — see sub-spec X"). Tab bar still renders all four tabs
 
-**Testable outcome:** Click product in list → tabbed detail page. Edit manufacturing fields. See readiness checklist. Create/edit production methods.
+**Testable outcome:** Click product in list → tabbed detail page. Edit manufacturing fields. See readiness checklist. Create/edit production methods. Sub-spec tabs show placeholder bodies until their Phase C lands.
 
-### Phase 4: Configurator Tab
+### Out of Scope (deferred)
 
-**Depends on:** Phase 3 (tab shell)
-
-1. ConfigAttribute DataTable with CRUD dialogs
-2. ConstraintRule DataTable with CRUD dialogs (condition/action editors)
-3. Resolution preview panel with dynamic attribute form
-4. Conditional tab visibility (rule_based only, message for variant_based, hidden for none)
-5. Update overview tab readiness checklist: configurator ○ → ✓ when attributes exist
-
-**Testable outcome:** Configure attributes and rules. Test resolution. Attributes defined here provide the namespace for variant_condition keys in BOM and routing tabs.
-
-### Phase 5: BOM Tab
-
-**Depends on:** Phase 3 (tab shell), Phase 4 (namespace validation), Phase 2 (UoM picker)
-
-1. BOM tree component: hierarchical expandable list with line data
-2. BOM line CRUD: add/edit/delete dialogs with material picker (catalog product combobox), UoM picker (from Phase 2 master data), variant condition editor (validates keys against ConfigAttribute.key from Phase 4)
-3. BomLineVariant inline expandable section
-4. BOM explosion panel: adaptive config/variant input → async job → result table + warnings
-5. Update overview tab: readiness checklist BOM ○ → ✓ when BOM lines exist. Production method cards show linked BOM name (click → switches to BOM tab)
-
-**Testable outcome:** View BOM tree. Add/edit lines with validated variant conditions and UoM selection. Expand variant overrides. Run explosion and see results. Overview reflects BOM status.
-
-### Phase 6: Routing Tab
-
-**Depends on:** Phase 3 (tab shell), Phase 4 (namespace validation), Phase 2 (work center picker)
-
-**Can run in parallel with Phase 5** — both depend on Phases 2+3+4 but not on each other.
-
-1. Operations DataTable with inline CRUD
-2. Work center combobox with "Create new" dialog shortcut (master data pages from Phase 2 provide the data)
-3. OperationTemplateVariant inline expandable section (variant condition keys validated against configurator attributes from Phase 4)
-4. Flow visualization (read-only, topological sort rendered as indented tree)
-5. Dependency list with add/delete + cycle detection
-6. Time rollup panel
-7. Update overview tab: readiness checklist routing ○ → ✓ when operations exist. Production method cards show linked routing name (click → switches to Routing tab)
-
-**Testable outcome:** View operations. Add operations with work center selection. See flow visualization. Define dependencies. Calculate time rollup. Overview reflects routing status.
-
-### Phase 7: Seed Data
-
-**Depends on:** All phases (seeds create data across all entities)
-
-1. Add minimal `seedExamples` to product_master `setup.ts`: one "Example Assembly" product with extension, 1 PM, basic BOM (3 lines), basic routing (3 operations, 2 dependencies), 3 work centers, 1 factory zone
-2. For rule_based example: add 3 ConfigAttributes + 2 ConstraintRules
-
-**Testable outcome:** Fresh app shows example manufacturing data after initialization. All tabs populated with example data.
+- **Seed/example data** — originally Phase 7. Dropped from spec. Demo fixtures go in an app-level module per the private fixture pattern (see memory note `feedback_demo_seed_location.md`), not in the packages/manufacturing tree.
 
 ## Integration Test Scenarios
 
-Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright API-first + UI navigation.
+Tests in `packages/manufacturing/src/modules/product_master/__integration__/` and `routing/__integration__/` (master data). Playwright API-first + UI navigation.
 
 ### Coverage — API Routes
 
 | Route | Method(s) | Covered by |
 |---|---|---|
-| `/api/product_master/manufacturing/product-manufacturing-extension` | GET / POST / PUT / DELETE | #1, #2, #7, #8, #24 |
-| `/api/product_master/manufacturing/catalog-products?enrolled=true\|false` | GET | #1 (picker `enrolled=false`), #7 (list `enrolled=true`), #24 |
+| `/api/product_master/manufacturing/product-manufacturing-extension` | GET / POST / PUT / DELETE | #1, #2, #7, #8 |
+| `/api/product_master/manufacturing/catalog-products?enrolled=true\|false` | GET | #1 (picker `enrolled=false`), #7 (list `enrolled=true`) |
 | `/api/product_master/manufacturing/unit-of-measure` | GET / POST / PUT / DELETE | #6 |
-| `/api/product_master/manufacturing/production-method` | GET / POST / PUT / DELETE | #9, #24 |
+| `/api/product_master/manufacturing/production-method` | GET / POST / PUT / DELETE | #9 |
 | `/api/routing/work-center` | GET / POST / PUT / DELETE | #4 |
 | `/api/routing/factory-zone` | GET / POST / PUT / DELETE | #5 |
 | `/api/catalog/products` (via `catalog-products` join) | GET | #1, #7 (indirect; covered by the catalog-products join endpoint) |
@@ -549,14 +344,16 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 
 | Path | Covered by |
 |---|---|
-| `/backend/manufacturing/products` | #1, #7, #24 |
-| `/backend/manufacturing/products/[id]` (Overview tab) | #2, #7, #8, #9, #24 |
+| `/backend/manufacturing/products` | #1, #7 |
+| `/backend/manufacturing/products/[id]` (Overview tab + tab shell) | #2, #7, #8, #9 |
 | `/backend/manufacturing/work-centers` | #4 |
 | `/backend/manufacturing/work-centers/[id]` | #4 |
 | `/backend/manufacturing/factory-zones` | #5 |
 | `/backend/manufacturing/units-of-measure` | #6 |
 | `/backend/manufacturing` (dashboard redirect → products) | #1 (implicit via first navigation) |
 | Catalog product detail widget (`crud-form:catalog.product` spot) | #2 |
+
+Per-tab paths (BOM / Routing / Configurator) are covered by integration tests in sub-specs b, c, d.
 
 ### Scenarios
 
@@ -568,24 +365,13 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 | 4 | 2 | Navigate to Work Centers → create work center → edit → verify in list | Master data CRUD |
 | 5 | 2 | Navigate to Factory Zones → create factory zone → verify in list | Master data CRUD |
 | 6 | 2 | Navigate to Units of Measure → create UoM → verify in list | Master data CRUD |
-| 7 | 3 | Open manufacturing product detail → verify tabs render → Overview tab shows product identity + manufacturing fields + readiness checklist (all ○ for new product) | Detail shell, tab layout, overview content, Graceful Incompleteness empty states |
+| 7 | 3 | Open manufacturing product detail → verify all 4 tabs render in tab bar → Overview tab shows product identity + manufacturing fields + readiness checklist (all ○ for new product) → BOM/Routing/Configurator tab bodies show placeholder text | Detail shell, tab shell contract, overview content, Graceful Incompleteness empty states |
 | 8 | 3 | Edit manufacturing fields (procurement type, config type, base UoM, phantom default) → save → verify persisted | Extension field editing |
 | 9 | 3 | Create production method → verify in overview list → set as default | PM CRUD in overview tab |
-| 10 | 4 | Open configurator tab (set config type to rule_based first) → create config attribute (each type: enum, boolean, material) → verify dynamic form renders type-appropriate inputs | Configurator attribute CRUD, ConfigurationForm component |
-| 11 | 4 | Create constraint rule (require_value type) → run resolution preview → verify rule fires and forced value shown in warnings | Constraint rule CRUD, resolution engine |
-| 12 | 4 | Set config type to variant_based → verify configurator tab shows "manage variants in Catalog" message | Conditional tab visibility |
-| 13 | 5 | Open BOM tab → see empty state ("No BOM defined") → create BOM header → add BOM lines → verify tree renders | BOM CRUD, empty state, Graceful Incompleteness |
-| 14 | 5 | Add BOM line with null material_id → verify "Material not selected" placeholder with warning icon → save succeeds | Graceful Incompleteness — save with incomplete data |
-| 15 | 5 | Reorder BOM lines via up/down buttons → verify sort_order updated | Reorder without drag-and-drop |
-| 16 | 5 | Product with no variants/config → run explosion → verify just button + date picker (no variant input form) → result shows all lines | Adaptive explosion panel — simplest case |
-| 17 | 5 | Product with rule_based config → run explosion → verify attribute form renders → resolve + explode → correct lines filtered | Adaptive explosion panel — rule_based case |
-| 18 | 5 | BOM with variant_condition referencing unknown ConfigAttribute key → verify warning badge on line | Namespace validation warning |
-| 19 | 6 | Open routing tab → see empty state → create operation with work center (combobox) → verify in list | Routing CRUD, empty state, work center picker |
-| 20 | 6 | Create operation with null run_time → verify "—" display with tooltip | Graceful Incompleteness — null times |
-| 21 | 6 | Add 3+ operations → add dependencies → verify flow visualization renders with parallel paths and convergence | Flow visualization |
-| 22 | 6 | Attempt to add circular dependency → verify rejection error in dialog | Cycle detection |
-| 23 | 6 | Run time rollup → verify result with per-operation breakdown + warnings for null times | Time rollup with incomplete data |
-| 24 | 5+6 | Full flow: create product → add PM → BOM with lines → routing with operations → link PM → verify overview readiness all ✓ → PM cards show linked BOM/routing names | End-to-end vertical slice, readiness checklist update |
+
+**Cross-spec end-to-end** (owned by the last sub-spec implemented — typically sub-spec c since routing is last in the recommended order):
+
+Full vertical slice: create product → add PM → configure attributes → BOM with lines → routing with operations → link PM → verify overview readiness all ✓ → PM cards show linked BOM/routing names. This test exercises the tab shell + cross-module readiness propagation + sub-spec b/c/d UIs together. Placed in the sub-spec c integration test suite to avoid duplicating it across specs.
 
 ## Risks & Impact Review
 
@@ -616,12 +402,7 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 - **Mitigation**: Within `packages/manufacturing`, modules can import each other's components. Tab components exported from each module and imported by the product_master detail page. Same package = same build, no circular dependency risk as imports are one-directional (shell imports tabs, not reverse)
 - **Residual risk**: None — standard pattern within a package
 
-#### Inline CRUD Complexity
-- **Scenario**: BOM tab has tree + expandable variant overrides + explosion panel. Many interactive elements on one page
-- **Severity**: Medium
-- **Affected area**: UI complexity, user confusion, state management
-- **Mitigation**: Progressive disclosure: tree collapsed by default, variant overrides hidden behind expand arrow, explosion panel collapsible. Each section manages its own loading/error state independently. Standard OM patterns (CrudForm dialogs, DataTable, flash messages) keep interaction consistent
-- **Residual risk**: Power users with complex BOMs (50+ lines, many variants) may find the page busy. Future: consider split BOM tree into own page for very complex products
+> Risks specific to BOM/Routing/Configurator tab UIs are documented in sub-specs b, c, and d respectively.
 
 ## Final Compliance Report — 2026-04-05
 
@@ -672,15 +453,16 @@ Tests in `packages/manufacturing/src/modules/*/__ integration__/`. Playwright AP
 | Pre-req — AGENTS.md | Done | 2026-04-06 | `packages/manufacturing/AGENTS.md` created |
 | Phase 1 — Navigation + Product List + Catalog Widget | Done | 2026-04-06 | Sidebar menu with sub-items, product list DataTable, product picker dialog, catalog injection widget |
 | Phase 2 — Master Data Pages | Done | 2026-04-06 | Work centers list+detail, factory zones list+dialog, UoM list+dialog |
-| Phase 3 — Product Detail Shell + Overview Tab | Done | 2026-04-06 | ManufacturingTabsLayout, FormHeader, Overview tab with fields/PM/readiness. BOM/Routing/Configurator tabs render placeholder bodies until their phases land |
-| Phase 4 — Configurator Tab | Not Started | — | — |
-| Phase 5 — BOM Tab | Not Started | — | — |
-| Phase 6 — Routing Tab | Not Started | — | — |
-| Phase 7 — Seed Data | Not Started | — | Deferred to follow-up — requires running DB with tenant |
+| Phase 3 — Product Detail Shell + Overview Tab | Done | 2026-04-06 | ManufacturingTabsLayout, FormHeader, Overview tab with fields/PM/readiness. BOM/Routing/Configurator tab bodies render placeholder until sub-spec b/c/d Phase C lands |
+
+Per-tab UI phases (previously Phase 4–6 here) are now owned by their respective sub-specs — see status tables in sub-specs b, c, d.
 
 ---
 
 ## Changelog
+
+### 2026-04-11
+- **Spec refactor**: Narrowed scope to UI foundation only — shell, navigation, product list, detail shell + Overview tab, master data CRUD. Per-tab UI (Configurator, BOM, Routing) migrated to sub-specs b, c, d (Phase C of each). Phase 7 (seed data) dropped — handled via app-level demo module pattern. Tests 10–24 redistributed to owning sub-specs. Renamed spec to "Manufacturing UI Foundation."
 
 ### 2026-04-06
 - **Implementation**: Phases 1-3 implemented. Typecheck and build pass. BOM/Routing/Configurator tabs render placeholder bodies until their respective phases land.
