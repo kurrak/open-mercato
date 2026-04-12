@@ -177,7 +177,7 @@ type ExplosionInput = {
 
 ### Algorithm (5 steps)
 
-1. **Configuration resolution** (stub) — In this sub-spec, `variantConditions` are passed in directly. Sub-spec d replaces this with real resolution from ConfigAttribute/ConstraintRule.
+1. **Configuration resolution** (stub) — In this sub-spec, `variantConditions` are passed in directly. Sub-spec d replaces this with resolution from ConfigAttribute values (ConstraintRule evaluation deferred).
 
 2. **Filter BomLines** — For each line in the BomHeader:
    - Skip if `is_active = false` on parent BomHeader
@@ -447,12 +447,24 @@ Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant
 
 **Adaptive form** — the explosion input UI adapts to what's defined. The "Explode BOM" button always works, even with incomplete data.
 
-| Product State | Explosion Input Form |
+**Configuration input switching** — the panel renders one of three input components based on `configuration_type`:
+
+| `configuration_type` | Input Component | Output passed to explosion |
+|---|---|---|
+| `none` | Nothing — just "Explode BOM" button + effective date picker | `{}` — all lines always active |
+| `variant_based` | `VariantPicker` — CatalogProductVariant combobox (`/api/catalog/products/[productId]/variants`) + effective date | `{ catalogProductVariantId }` — matches BomLineVariant.catalog_product_variant_id |
+| `rule_based` | `ConfigurationForm` (from sub-spec d §3) + effective date | `{ variantConditions }` — calls configurator resolve first, then passes resolved conditions to explosion |
+
+**`VariantPicker` component**: simple searchable combobox of CatalogProductVariant records for this product. Located at `packages/manufacturing/src/modules/product_master/components/VariantPicker.tsx`. Shared by BOM explosion (this spec) and routing time rollup (sub-spec c §7).
+
+**Edge cases per state:**
+
+| Product State | Behavior |
 |---|---|
-| `configuration_type = 'none'`, no variant_condition on any BomLine | Just "Explode BOM" button + effective date picker. All lines always active |
-| `configuration_type = 'variant_based'`, BomLineVariants exist | Variant picker (CatalogProductVariant select) + effective date. No overrides yet → picker still shown with note "No variant-specific overrides defined — all variants produce the same material list". If BomLines have `variant_condition` values not matching any CatalogProductVariant option: warning "N lines reference variant values not found in product variants" |
-| `configuration_type = 'rule_based'`, ConfigAttributes defined | Dynamic attribute form via `ConfigurationForm` (from sub-spec d) + effective date. Calls configurator resolve first, then explodes with resolved conditions. If BomLines have `variant_condition` keys not in `useConfigAttributeKeys(productId)`: warning "N lines reference unknown configuration keys" with list of orphaned keys |
-| `configuration_type = 'rule_based'`, no ConfigAttributes yet | Just button + effective date + message "No configuration attributes defined — explosion will include all unconditional BOM lines." Conditional lines skipped, warning shown in result |
+| `variant_based`, no BomLineVariants exist | Picker still shown with note "No variant-specific overrides defined — all variants produce the same material list" |
+| `variant_based`, BomLines have `variant_condition` values not matching any CatalogProductVariant option | Warning "N lines reference variant values not found in product variants" |
+| `rule_based`, ConfigAttributes defined, BomLines have `variant_condition` keys not in `useConfigAttributeKeys(productId)` | Warning "N lines reference unknown configuration keys" with list of orphaned keys |
+| `rule_based`, no ConfigAttributes yet | Just button + effective date + message "No configuration attributes defined — explosion will include all unconditional BOM lines." Conditional lines skipped, warning shown in result |
 | Any type, BomLines have variant_conditions but no configurator/variants | Just button + effective date + warning "N lines have variant conditions but no configuration provided — conditional lines will be skipped" |
 
 - Effective date picker defaults to today, shown in all states for date-effective line filtering

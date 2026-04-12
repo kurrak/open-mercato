@@ -563,7 +563,14 @@ Collapsible section at the bottom of the tab:
 
 - "Calculate Time" button
 - Quantity input (default: 1)
-- For products with `configuration_type ∈ {variant_based, rule_based}`: variant/config selector (reuses `ConfigurationForm` from sub-spec d for rule_based)
+- **Configuration input switching** — same pattern as BOM explosion panel (sub-spec b §6):
+
+| `configuration_type` | Input Component | Output passed to time rollup |
+|---|---|---|
+| `none` | Nothing — just button + quantity | `{}` — base times used for all operations |
+| `variant_based` | `VariantPicker` (from `product_master/components/VariantPicker.tsx`, shared with sub-spec b) | `{ catalogProductVariantId }` — matches OperationTemplateVariant.catalog_product_variant_id for time overrides |
+| `rule_based` | `ConfigurationForm` (from sub-spec d §3) | `{ variantConditions }` — matches OperationTemplateVariant.variant_condition for time overrides |
+
 - **Result display**:
   - Total occupation time (sum of all operations)
   - Total lead time (critical path through the DAG)
