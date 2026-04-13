@@ -399,11 +399,11 @@ Dynamic form generated from active ConfigAttribute records — one field per att
 
 | attribute_type | Input Component | Data Source |
 |---|---|---|
-| `enum` | `Select` (from `@open-mercato/ui/primitives`) | `allowed_values` array |
+| `enum` | Native `<select>` (matches CrudForm convention — no Select primitive exists) | `allowed_values` array |
 | `numeric_range` | Number input with min/max/step | `allowed_values` `{min, max, step}` |
 | `boolean` | Toggle | — |
 | `text` | Text Input | — |
-| `material` | Searchable combobox | `/api/catalog/products?category_id=<material_filter_id>`. **Fallback:** if API call fails or category is deleted/empty, show disabled combobox with "No materials available — check category configuration" message. Never block the form — other attributes remain fillable |
+| `material` | `ComboboxInput` (from `@open-mercato/ui/backend/inputs/ComboboxInput`) | `/api/catalog/products?categoryIds=<material_filter_id>`. **Fallback:** if API call fails or category is deleted/empty, show disabled combobox with "No materials available — check category configuration" message. Never block the form — other attributes remain fillable |
 
 **Export path**: `packages/manufacturing/src/modules/configurator/components/ConfigurationForm.tsx`
 
@@ -529,7 +529,7 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-05 | All module files, entities, validators, commands, CRUD routes, events, ACL, setup, search, translations, DI |
 | Phase B — Resolution Engine + Namespace Validation | Done | 2026-04-05 | config-resolution.ts pure function, resolve endpoint, namespace-validator.ts, validate-namespace endpoint |
-| Phase C — UI Widget + Tests | In Progress | 2026-04-05 | Unit tests done (50 passing). ConfiguratorTab UI detailed in this spec (2026-04-11 refactor — migrated from foundation UI spec). Implementation not started |
+| Phase C — UI Widget + Tests | In Progress | 2026-04-12 | Unit tests done (50 passing). UI components implemented: ConfiguratorTab, AttributesSection, ConfigurationForm, hooks. Reorder + usage endpoints added. Integration tests pending |
 
 ### Phase A — Detailed Progress
 - [x] Step 1: Create `src/modules/configurator/` with index.ts, acl.ts, events.ts, setup.ts, di.ts, search.ts, translations.ts
@@ -552,17 +552,21 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 - [x] Unit tests for namespace-validator.ts (5 tests)
 - [x] Unit tests for validators.ts (11 tests)
 - [x] Module structure tests (14 tests)
-- [ ] AttributesSection.tsx component (DataTable + CRUD dialogs + delete impact warning + Test Configuration dialog — self-contained for future catalog injection)
-- [ ] ConfiguratorTab.tsx component (thin shell — visibility logic + renders AttributesSection)
-- [ ] ConfigurationForm dynamic component (5 attribute_type input branches, exported for sub-spec b/c)
-- [ ] `GET /api/manufacturing/config-attribute/:id/usage` endpoint
-- [ ] useConfigAttributeKeys hook (for sub-spec b/c namespace validation)
-- [ ] useIsConfiguratorReady hook (for foundation Overview readiness checklist)
+- [x] ConfiguratorTab.tsx component (thin shell — visibility logic + renders AttributesSection)
+- [x] AttributesSection.tsx component (DataTable + CRUD dialogs + delete impact warning + Test Configuration dialog — self-contained for future catalog injection)
+- [x] ConfigurationForm dynamic component (5 attribute_type input branches, exported for sub-spec b/c)
+- [x] `GET /api/configurator/manufacturing/config-attribute/usage?id=` endpoint
+- [x] `POST /api/configurator/manufacturing/config-attribute/reorder` endpoint (atomic swap)
+- [x] useConfigAttributeKeys hook (for sub-spec b/c namespace validation)
+- [x] useIsConfiguratorReady hook (for foundation Overview readiness checklist)
 - [ ] Integration tests D-UI-1 through D-UI-7
 
 ---
 
 ## Changelog
+
+### 2026-04-13
+- **Phase C UI implemented**: ConfiguratorTab (thin shell with variant_based/rule_based/none branches), AttributesSection (full CRUD DataTable with pill-styled enum values, inline reorder arrows, CrudForm dialog with type-reactive fields, tags input for enums, delete with usage-check confirmation, Test Configuration dialog), ConfigurationForm (dynamic form with 5 type branches, fieldset grouping, ComboboxInput for material, Cmd+Enter submit), useConfigAttributeKeys and useIsConfiguratorReady hooks. New endpoints: atomic reorder (`POST config-attribute/reorder`) and usage count (`GET config-attribute/usage?id=`). Tab persistence via URL hash. Spec updated for reorder UX, material ComboboxInput, query-param usage endpoint, text regex deferred.
 
 ### 2026-04-12
 - **ConstraintRule UI deferred**: Stripped constraint rules section (§3), rule-specific tests (D-UI-3/4 replaced), and cascading loops risk from Phase C scope. ConstraintRule entity/API remain implemented — only the management UI and rule evaluation in resolution preview are deferred. Resolution preview simplified to passthrough mode (attribute values → variant conditions directly). Sub-spec b reference updated.

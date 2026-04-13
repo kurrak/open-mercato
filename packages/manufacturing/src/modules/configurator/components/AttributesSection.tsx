@@ -22,8 +22,9 @@ import {
   DialogTitle,
 } from '@open-mercato/ui/primitives/dialog'
 import { IconButton } from '@open-mercato/ui/primitives/icon-button'
-import { FlaskConical, ArrowUp, ArrowDown } from 'lucide-react'
+import { FlaskConical, ArrowUp, ArrowDown, AlertTriangle, XCircle } from 'lucide-react'
 import { useListLoader } from '../../../lib/useListLoader'
+import ConfigurationForm from './ConfigurationForm'
 import { useFeatureFlag } from '../../../lib/useFeatureFlag'
 import {
   ATTRIBUTE_DEFAULT_VALUES,
@@ -35,6 +36,7 @@ import {
   type AttributeFormValues,
   type ConfigAttributeRow,
 } from './AttributeFormConfig'
+import type { ResolutionResult } from '../lib/config-resolution'
 
 type UsageResult = { bomLineCount: number; operationVariantCount: number }
 
@@ -52,6 +54,9 @@ export default function AttributesSection({ productId }: { productId: string }) 
   const [reloadToken, setReloadToken] = React.useState(0)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editingRow, setEditingRow] = React.useState<ConfigAttributeRow | null>(null)
+  const [testConfigOpen, setTestConfigOpen] = React.useState(false)
+  const [resolutionResult, setResolutionResult] = React.useState<ResolutionResult | null>(null)
+  const [resolving, setResolving] = React.useState(false)
 
   const reload = React.useCallback(() => setReloadToken((n) => n + 1), [])
 
@@ -229,6 +234,40 @@ export default function AttributesSection({ productId }: { productId: string }) 
     [editingRow, productId, closeDialog, reload, runMutation, retryLastMutation, t],
   )
 
+  // --- Test Configuration ---
+
+  const handleTestResolve = React.useCallback(
+    async (snapshot: Record<string, unknown>) => {
+      setResolving(true)
+      setResolutionResult(null)
+      try {
+        const stringSnapshot: Record<string, string> = {}
+        for (const [key, val] of Object.entries(snapshot)) {
+          if (val != null) stringSnapshot[key] = String(val)
+        }
+        const { ok, result } = await apiCall<ResolutionResult>(
+          '/api/configurator/manufacturing/configurator/resolve',
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ productId, configSnapshot: stringSnapshot }),
+          },
+        )
+        if (!ok || !result) {
+          flash(t('configurator.testConfig.resolveError', 'Failed to resolve configuration'), 'error')
+          return
+        }
+        setResolutionResult(result)
+      } catch (err) {
+        console.warn('[configurator] resolve failed', err)
+        flash(t('configurator.testConfig.resolveError', 'Failed to resolve configuration'), 'error')
+      } finally {
+        setResolving(false)
+      }
+    },
+    [productId, t],
+  )
+
   // --- Values display helper ---
 
   const renderValuesCell = React.useCallback(
@@ -238,11 +277,9 @@ export default function AttributesSection({ productId }: { productId: string }) 
           if (!Array.isArray(row.allowed_values) || row.allowed_values.length === 0)
             return <span className="text-muted-foreground">—</span>
           const values = row.allowed_values as string[]
-          const visible = values.slice(0, 5)
-          const remaining = values.length - visible.length
           return (
             <div className="flex flex-wrap gap-1">
-              {visible.map((v) => (
+              {values.map((v) => (
                 <span
                   key={v}
                   className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-muted text-muted-foreground"
@@ -250,11 +287,6 @@ export default function AttributesSection({ productId }: { productId: string }) 
                   {v}
                 </span>
               ))}
-              {remaining > 0 && (
-                <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-muted text-muted-foreground">
-                  +{remaining}
-                </span>
-              )}
             </div>
           )
         }
@@ -447,7 +479,8 @@ export default function AttributesSection({ productId }: { productId: string }) 
                 size="sm"
                 disabled={rows.length === 0}
                 onClick={() => {
-                  /* Test Configuration — wired in ConfigurationForm (Phase C §3) */
+                  setResolutionResult(null)
+                  setTestConfigOpen(true)
                 }}
               >
                 <FlaskConical className="mr-2 size-4" />
@@ -500,6 +533,74 @@ export default function AttributesSection({ productId }: { productId: string }) 
           }
           onSubmit={handleFormSubmit}
         />
+      )}
+
+      {testConfigOpen && (
+        <Dialog open={testConfigOpen} onOpenChange={(isOpen) => { if (!isOpen) setTestConfigOpen(false) }}>
+          <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{t('configurator.testConfig.title', 'Test Configuration')}</DialogTitle>
+            </DialogHeader>
+            <ConfigurationForm
+              productId={productId}
+              onSubmit={handleTestResolve}
+              submitLabel={t('configurator.testConfig.resolve', 'Resolve')}
+              disabled={resolving}
+            />
+            {resolutionResult && (
+              <div className="space-y-3 border-t pt-4 mt-2">
+                <h4 className="text-sm font-medium">
+                  {t('configurator.testConfig.resolvedTitle', 'Resolved Variant Conditions')}
+                </h4>
+                <div className="rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-3 py-1.5 text-left font-medium">{t('configurator.testConfig.keyHeader', 'Key')}</th>
+                        <th className="px-3 py-1.5 text-left font-medium">{t('configurator.testConfig.valueHeader', 'Value')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(resolutionResult.resolvedConditions).map(([key, vals]) => (
+                        <tr key={key} className="border-b last:border-0">
+                          <td className="px-3 py-1.5"><code className="text-xs bg-muted px-1.5 py-0.5 rounded">{key}</code></td>
+                          <td className="px-3 py-1.5">{vals.join(', ')}</td>
+                        </tr>
+                      ))}
+                      {Object.keys(resolutionResult.resolvedConditions).length === 0 && (
+                        <tr>
+                          <td colSpan={2} className="px-3 py-3 text-center text-muted-foreground">
+                            {t('configurator.testConfig.noConditions', 'No conditions resolved')}
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                {resolutionResult.warnings.length > 0 && (
+                  <div className="space-y-1">
+                    {resolutionResult.warnings.map((warning, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-sm text-amber-600">
+                        <AlertTriangle className="size-3.5 shrink-0" />
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {resolutionResult.errors.length > 0 && (
+                  <div className="space-y-1">
+                    {resolutionResult.errors.map((error, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5 text-sm text-destructive">
+                        <XCircle className="size-3.5 shrink-0" />
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       )}
 
       {ConfirmDialogElement}

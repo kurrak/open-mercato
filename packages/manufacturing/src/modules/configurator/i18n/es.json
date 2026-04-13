@@ -78,6 +78,22 @@
   "configurator.attributes.enum.type.text": "Texto",
   "configurator.attributes.enum.type.material": "Material",
 
+  "configurator.configForm.empty": "No hay atributos de configuración definidos",
+  "configurator.configForm.submit": "Resolver",
+  "configurator.configForm.selectPlaceholder": "— Seleccionar —",
+  "configurator.configForm.booleanYes": "Sí",
+  "configurator.configForm.booleanNo": "No",
+  "configurator.configForm.noMaterials": "No hay materiales disponibles — verificar configuración de categoría",
+  "configurator.configForm.materialPlaceholder": "Buscar materiales...",
+
+  "configurator.testConfig.title": "Probar configuración",
+  "configurator.testConfig.resolve": "Resolver",
+  "configurator.testConfig.resolveError": "No se pudo resolver la configuración",
+  "configurator.testConfig.resolvedTitle": "Condiciones de variante resueltas",
+  "configurator.testConfig.keyHeader": "Clave",
+  "configurator.testConfig.valueHeader": "Valor",
+  "configurator.testConfig.noConditions": "Sin condiciones resueltas",
+
   "configurator.errors.unauthorized": "No autorizado",
   "configurator.errors.organization_required": "Se requiere contexto de organización",
   "configurator.errors.not_found": "Atributo no encontrado",

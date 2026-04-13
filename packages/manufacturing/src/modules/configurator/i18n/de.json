@@ -78,6 +78,22 @@
   "configurator.attributes.enum.type.text": "Text",
   "configurator.attributes.enum.type.material": "Material",
 
+  "configurator.configForm.empty": "Keine Konfigurationsattribute definiert",
+  "configurator.configForm.submit": "Auflösen",
+  "configurator.configForm.selectPlaceholder": "— Auswählen —",
+  "configurator.configForm.booleanYes": "Ja",
+  "configurator.configForm.booleanNo": "Nein",
+  "configurator.configForm.noMaterials": "Keine Materialien verfügbar — Kategoriekonfiguration prüfen",
+  "configurator.configForm.materialPlaceholder": "Materialien suchen...",
+
+  "configurator.testConfig.title": "Konfiguration testen",
+  "configurator.testConfig.resolve": "Auflösen",
+  "configurator.testConfig.resolveError": "Konfiguration konnte nicht aufgelöst werden",
+  "configurator.testConfig.resolvedTitle": "Aufgelöste Variantenbedingungen",
+  "configurator.testConfig.keyHeader": "Schlüssel",
+  "configurator.testConfig.valueHeader": "Wert",
+  "configurator.testConfig.noConditions": "Keine Bedingungen aufgelöst",
+
   "configurator.errors.unauthorized": "Nicht autorisiert",
   "configurator.errors.organization_required": "Organisationskontext erforderlich",
   "configurator.errors.not_found": "Attribut nicht gefunden",

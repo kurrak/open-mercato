@@ -78,6 +78,22 @@
   "configurator.attributes.enum.type.text": "Text",
   "configurator.attributes.enum.type.material": "Material",
 
+  "configurator.configForm.empty": "No configuration attributes defined",
+  "configurator.configForm.submit": "Resolve",
+  "configurator.configForm.selectPlaceholder": "— Select —",
+  "configurator.configForm.booleanYes": "Yes",
+  "configurator.configForm.booleanNo": "No",
+  "configurator.configForm.noMaterials": "No materials available — check category configuration",
+  "configurator.configForm.materialPlaceholder": "Search materials...",
+
+  "configurator.testConfig.title": "Test Configuration",
+  "configurator.testConfig.resolve": "Resolve",
+  "configurator.testConfig.resolveError": "Failed to resolve configuration",
+  "configurator.testConfig.resolvedTitle": "Resolved Variant Conditions",
+  "configurator.testConfig.keyHeader": "Key",
+  "configurator.testConfig.valueHeader": "Value",
+  "configurator.testConfig.noConditions": "No conditions resolved",
+
   "configurator.errors.unauthorized": "Unauthorized",
   "configurator.errors.organization_required": "Organization context is required",
   "configurator.errors.not_found": "Attribute not found",

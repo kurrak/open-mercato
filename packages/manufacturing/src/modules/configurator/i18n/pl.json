@@ -78,6 +78,22 @@
   "configurator.attributes.enum.type.text": "Tekst",
   "configurator.attributes.enum.type.material": "Materiał",
 
+  "configurator.configForm.empty": "Brak zdefiniowanych atrybutów konfiguracji",
+  "configurator.configForm.submit": "Rozwiąż",
+  "configurator.configForm.selectPlaceholder": "— Wybierz —",
+  "configurator.configForm.booleanYes": "Tak",
+  "configurator.configForm.booleanNo": "Nie",
+  "configurator.configForm.noMaterials": "Brak dostępnych materiałów — sprawdź konfigurację kategorii",
+  "configurator.configForm.materialPlaceholder": "Szukaj materiałów...",
+
+  "configurator.testConfig.title": "Testuj konfigurację",
+  "configurator.testConfig.resolve": "Rozwiąż",
+  "configurator.testConfig.resolveError": "Nie udało się rozwiązać konfiguracji",
+  "configurator.testConfig.resolvedTitle": "Rozwiązane warunki wariantowe",
+  "configurator.testConfig.keyHeader": "Klucz",
+  "configurator.testConfig.valueHeader": "Wartość",
+  "configurator.testConfig.noConditions": "Brak rozwiązanych warunków",
+
   "configurator.errors.unauthorized": "Brak autoryzacji",
   "configurator.errors.organization_required": "Wymagany kontekst organizacji",
   "configurator.errors.not_found": "Nie znaleziono atrybutu",
