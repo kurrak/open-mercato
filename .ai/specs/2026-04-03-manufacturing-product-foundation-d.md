@@ -529,7 +529,7 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-05 | All module files, entities, validators, commands, CRUD routes, events, ACL, setup, search, translations, DI |
 | Phase B — Resolution Engine + Namespace Validation | Done | 2026-04-05 | config-resolution.ts pure function, resolve endpoint, namespace-validator.ts, validate-namespace endpoint |
-| Phase C — UI Widget + Tests | In Progress | 2026-04-12 | Unit tests done (50 passing). UI components implemented: ConfiguratorTab, AttributesSection, ConfigurationForm, hooks. Reorder + usage endpoints added. Integration tests pending |
+| Phase C — UI Widget + Tests | Done | 2026-04-13 | 50 unit tests + 7 integration tests. All UI components, hooks, and endpoints implemented |
 
 ### Phase A — Detailed Progress
 - [x] Step 1: Create `src/modules/configurator/` with index.ts, acl.ts, events.ts, setup.ts, di.ts, search.ts, translations.ts
@@ -559,7 +559,7 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 - [x] `POST /api/configurator/manufacturing/config-attribute/reorder` endpoint (atomic swap)
 - [x] useConfigAttributeKeys hook (for sub-spec b/c namespace validation)
 - [x] useIsConfiguratorReady hook (for foundation Overview readiness checklist)
-- [ ] Integration tests D-UI-1 through D-UI-7
+- [x] Integration tests D-UI-1 through D-UI-7 (API-first Playwright tests)
 
 ---
 

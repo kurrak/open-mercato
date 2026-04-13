@@ -57,8 +57,9 @@ export async function GET(req: Request) {
     const productId = attribute.productId
     const knex = em.getConnection().getKnex()
 
-    // Raw SQL required here: MikroORM doesn't support JSONB key-existence (`?`)
-    // operator, and the query joins across 3 tables (BomLine→BomHeader, or
+    // Raw SQL required here: MikroORM doesn't support JSONB key-existence checks,
+    // and jsonb_exists() avoids ambiguity with knex parameterized query placeholders.
+    // The query joins across 3 tables (BomLine→BomHeader, or
     // OperationTemplateVariant→OperationTemplate→RoutingTemplate). These entities
     // don't have encrypted columns — if that changes, switch to QueryBuilder.
 
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
          AND bh.deleted_at IS NULL
          AND bl.deleted_at IS NULL
          AND bl.variant_condition IS NOT NULL
-         AND bl.variant_condition ? ?`,
+         AND jsonb_exists(bl.variant_condition, ?)`,
       [productId, organizationId, auth.tenantId, attributeKey],
     )
 
@@ -92,7 +93,7 @@ export async function GET(req: Request) {
          AND ot.deleted_at IS NULL
          AND otv.deleted_at IS NULL
          AND otv.variant_condition IS NOT NULL
-         AND otv.variant_condition ? ?`,
+         AND jsonb_exists(otv.variant_condition, ?)`,
       [productId, organizationId, auth.tenantId, attributeKey],
     )
 
