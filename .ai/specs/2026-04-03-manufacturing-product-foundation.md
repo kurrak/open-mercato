@@ -43,8 +43,6 @@ Open Mercato is a commerce/ERP platform with a mature catalog (11 entities), sal
 
 This spec family adds the product definition layer — the foundation that all later manufacturing features (work orders, MRP, purchasing, quality) build on.
 
-> **Market Reference**: Studied 13 ERP systems (SAP S/4HANA, SAP B1, D365 SCM, D365 BC, Epicor Kinetic, Infor SyteLine, NetSuite, Acumatica, Odoo, ERPNext, Katana, MRPeasy, Carbon ERP). Adopted: multi-level BOM with phantom pass-through (SAP/Epicor pattern), operation dependency graph over simple sequence numbers (SAP PLAS/AFFL pattern but native from start), Production Method as BOM↔Routing bridge (D365 BC pattern), constraint-based configurator (Carbon pattern). Rejected: single-level flat BOM (Katana/MRPeasy — insufficient for complex discrete manufacturing), coupled BOM+Routing in one entity (Epicor MOM — too rigid), JSONB staging for changes (anti-pattern from Odoo).
-
 ## Problem Statement
 
 1. **No product structure beyond commerce.** OM's CatalogProduct holds title, SKU, price, variants, and media. A discrete manufacturer needs: what materials go into this product (BOM), what operations produce it (routing), where those operations happen (work centers), and how customer choices affect both (configurator). None of this exists.
@@ -216,8 +214,13 @@ Cross-module UUID FKs:
 - `ProductionMethod.bom_header_id` → BomHeader (bom module) — PM owns this FK, not reverse
 - `ProductionMethod.routing_template_id` → RoutingTemplate (routing module) — PM owns this FK, not reverse
 - `BomLine.operation_template_id` → OperationTemplate (routing module, **nullable**)
-- `BomLine.material_id` → CatalogProduct (OM catalog, cross-package)
+- `BomLine.product_id` → CatalogProduct (OM catalog, cross-package, **nullable** — XOR with `product_resolve_key`)
+- `BomLine.product_variant_id` → CatalogProductVariant (OM catalog, cross-package, **nullable** — static-writable when a Product has variants; for dynamic lines, Step 2 of BOM explosion writes the resolved variant into the output `ExplosionLine` only, never into this persisted column)
+- `BomLine.product_resolve_key` → **not an FK** — VARCHAR matching `ConfigAttribute.key`; resolved at explosion time via a type-directed lookup against `variantConditions[key]` UUID (see sub-spec b §BOM Explosion Algorithm / Step 2)
+- `BomLineVariant.product_override_id` → CatalogProduct (OM catalog, cross-package, **nullable**)
+- `BomLineVariant.product_variant_override_id` → CatalogProductVariant (OM catalog, cross-package, **nullable** — paired with `product_override_id`)
 - `ConfigAttribute.product_id` → CatalogProduct (OM catalog, cross-package)
+- `ConfigAttribute.product_filter_id` → CatalogCategory (OM catalog, cross-package, **nullable** — scopes `product` / `product_variant` attribute types to a category)
 
 ### Event Namespace
 
@@ -361,7 +364,7 @@ Manufacturing product data is built incrementally — element by element, over h
 |---|---|---|
 | Nullable FKs for cross-entity links | All entities | ProductionMethod.bom_header_id, BomLine.operation_template_id — null means "not yet linked", not "broken" |
 | No required-completeness gates on save | CRUD operations | User can save a BomHeader with zero BomLines. Can save a RoutingTemplate with zero operations. Validation runs on *use* (explosion, scheduling), not on *save* |
-| Algorithms handle missing data gracefully | BOM explosion, config resolution, DAG validation | BOM explosion skips lines with null material_id. Config resolution returns partial results if some attributes are undefined. DAG validation warns about disconnected nodes, doesn't reject them |
+| Algorithms handle missing data gracefully | BOM explosion, config resolution, DAG validation | BOM explosion skips lines where both `product_id` and `product_resolve_key` are null. Lines with `product_resolve_key` that Step 2 cannot resolve are emitted with `productId === null` and a per-line warning in `result.warnings[]`; planning consumers filter `productId === null` rows out of demand, but the UI surfaces them. Config resolution returns partial results if some attributes are undefined. DAG validation warns about disconnected nodes, doesn't reject them |
 | UI shows completeness status, not errors | Product card, BOM tab, routing tab | "3 of 8 elements have BOM defined" — progress indicator, not error banner. Missing data shown as empty states with "add" affordances, not validation errors |
 | Enrichers return meaningful defaults for incomplete data | Response enrichers | `_manufacturing: { has_bom: false, production_method_count: 0 }` — not null, not error |
 
@@ -493,6 +496,19 @@ Manufacturing terms used in this spec family. OM maintainers: this section is fo
 ---
 
 ## Changelog
+
+### 2026-04-17
+- **Removed `Market Reference` blockquote** from §Overview (13-system audit paragraph). Comparative-research framing not consistent with OM's spec style; readers of the umbrella want the OM contract, not a competitive summary.
+- **Dynamic product resolution cross-ref.** Updated §Entity Dependency Graph to reflect the 2026-04-17 BomLine / BomLineVariant / ConfigAttribute changes: `BomLine.material_id` → `product_id` (nullable) + new `product_variant_id` and `product_resolve_key`; BomLineVariant override pair; ConfigAttribute `product_filter_id` (renamed from `material_filter_id`). §Graceful Incompleteness row for BOM explosion updated: partial explosion signals unresolved lines via `productId === null` + per-line entries in `result.warnings[]` (no dedicated status field on the output line). The resolution step (Step 2 of BOM explosion in sub-spec b) is **type-directed by `attribute_type`** and operates on UUIDs carried in `variantConditions` (no separate snapshot input, no code-based fallback). Detailed spec in sub-spec b §BOM Explosion Algorithm / Step 2 and sub-spec d §Design Decision #4 / #5. No changes to cross-module FK policy; all new references remain UUID FKs without ORM relations.
+
+### Review — 2026-04-17
+- **Reviewer**: Agent (spec-writing skill)
+- **Security**: Passed — no new auth surfaces
+- **Performance**: Passed — no new query patterns at the umbrella level
+- **Cache**: N/A
+- **Commands**: Passed — no umbrella-level command changes
+- **Risks**: Passed — umbrella risks unchanged; per-spec risks updated in sub-specs b and d
+- **Verdict**: Approved
 
 ### 2026-04-06
 - Review fixes: FK direction reversal (PM owns bom_header_id and routing_template_id, BomHeader/RoutingTemplate no longer own reverse FK). Added is_phantom_default and service procurement type to extension entity (4 fields, was 3). Added production-method resolve endpoint. Completed event namespace (12 missing CRUD events added). Wording improvements throughout

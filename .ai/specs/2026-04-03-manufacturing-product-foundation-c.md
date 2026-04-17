@@ -45,8 +45,6 @@ The routing uses a Template → Variant Override pattern:
 - **Template** = the default operation parameters (time, rate, work center) — one source of truth
 - **Variant Override** = exceptions for specific variants (e.g., larger seat takes 60 min instead of 45) — only the difference is stored
 
-> **Market Reference**: DAG-based operation dependencies follow SAP's parallel sequences pattern (PLAS/AFFL) but implemented natively rather than as a bolt-on layer. 5 time components (setup, run, teardown, queue, wait+move) follow D365 SCM's capacity model. Payment types (piecework/hourly/mixed) based on discrete manufacturing practices in Central/Eastern Europe where piecework is common. WorkCenter capacity and efficiency follow 11/13 reference systems.
-
 ## Problem Statement
 
 1. **No routing or operation concept in OM.** There is no way to define how a product is manufactured — what operations, in what order, at what work centers, taking how long.
@@ -684,6 +682,9 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 ---
 
 ## Changelog
+
+### 2026-04-17
+- **Removed `Market Reference` blockquote** from §Proposed Solution (DAG / time components / payment types / WorkCenter attributions against 13 reference systems). The comparative-research framing is not consistent with the rest of OM's spec style. Where a pattern attribution is genuinely load-bearing for a design decision, it can live in the Rationale column of the Design Decisions table; nothing in this spec required that.
 
 ### 2026-04-11
 - **Phase C expansion**: Migrated detailed Routing tab UI spec from `2026-04-05-manufacturing-ui-foundation.md` (foundation UI spec refactor). Added RoutingTab component contract, operations DataTable layout, Operation CRUD dialogs, OperationTemplateVariant inline section, flow visualization + dependency list CRUD with cycle detection, time rollup panel, readiness hook exports (`useIsRoutingReady`, `useRoutingName`), 9 integration tests (C-UI-1..9), and 1 cross-module end-to-end test (C-E2E-1) owned by this sub-spec. Phase C status: Done (placeholder only) → In Progress. Declared dependencies on foundation Phase 3 + Phase 2 (WorkCenter) + sub-spec d Phase C.

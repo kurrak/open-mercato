@@ -48,8 +48,6 @@ The configurator sits upstream of BOM and routing: it answers "what did the cust
 | `variant_based` | Pre-materialized OM CatalogProductVariant (up to ~50 combinations) | None from this module | BomLineVariant.variant_id FK, OperationTemplateVariant.variant_id FK |
 | `rule_based` | Dynamic via ConfigAttribute + ConstraintRule (unlimited combinations) | ConfigAttribute, ConstraintRule | BomLine.variant_condition, BomLineVariant.variant_condition, OperationTemplateVariant.variant_condition — keys match ConfigAttribute.key |
 
-> **Market Reference**: Constraint-based configuration follows Carbon ERP's `configurationParameter` pattern — the most complete open-source implementation. Attribute types including `material` (live inventory lookup) adopted from Carbon's `dataType = 'material'` + `materialFormFilterId`. Simple JSON rule engine sufficient for ~300 rules (<100ms evaluation) — validated against SAP LO-VC (overkill for SMB), Epicor CPQ (heavy), and D365 Product Configurator (solver-based). Expression engine / OR-Tools CP-SAT solver deferred as future enhancement for factories exceeding 300 rules.
-
 ## Problem Statement
 
 1. **OM's variant model doesn't scale to manufacturing complexity.** `CatalogProductVariant` with `optionValues` JSONB works for e-commerce (S/M/L × Red/Blue = 6 variants). Manufacturing has 36,000+ combinations — materializing each is impossible.
@@ -71,8 +69,8 @@ Add a `configurator` module with ConfigAttribute and ConstraintRule entities, a 
 | 1 | Configurator scope | **BOM/routing resolution only — no pricing** | PriceAdjustment deferred until sales integration. Configurator resolves which BOM lines and routing overrides apply. Pricing layer is meaningless without sales order lines to consume it |
 | 2 | Constraint engine | **Simple JSON list evaluation** | Evaluate rules by iterating sorted by priority, checking condition_json matches against current selections. O(n) per evaluation, <100ms for ~300 rules. Sufficient for target scale. Expression engine / solver = future enhancement |
 | 3 | Configuration snapshot format | **Flat JSONB: `{"attribute_key": "selected_value"}`** | Keys = ConfigAttribute.key. Values = selected option. Metadata fields prefixed with `_` (e.g., `_resolved_at`). Same format used everywhere: resolution input, BOM explosion input, storage on future SalesOrderLine/WorkOrder |
-| 4 | Namespace rule enforcement | **Application-level validation on BomLine/OperationTemplateVariant save** | When saving a BomLine or OperationTemplateVariant with `variant_condition`, validate that keys match existing ConfigAttribute.key values for that product. Warn (not block) if attribute doesn't exist yet — Graceful Incompleteness allows building BOM before configurator |
-| 5 | Attribute type `material` | **Live query against CatalogProduct catalog** | `material_filter_id` points to a product category. Configurator shows searchable combobox of products in that category. New products automatically appear — zero maintenance. Follows Carbon ERP pattern |
+| 4 | Namespace rule enforcement | **Two-layer: warning at save, soft error at runtime** | Save-time warnings preserve Graceful Incompleteness (BOM may be drafted before the configurator is defined). Runtime failures during BOM explosion surface as `ExplosionLine.productId === null` + a per-line entry in `result.warnings[]`, not as exceptions, so partial explosion keeps working. Full mechanics in §Namespace Rule below |
+| 5 | Dynamic product attribute types | **Two enum values: `'product'` and `'product_variant'`; UUID-valued snapshots** | `'product'` resolves a selected option to a CatalogProduct (no variants — e.g., options modelled as separate products). `'product_variant'` resolves to a CatalogProductVariant (e.g., colour/size variants of a collection product). Both use `product_filter_id` to scope the searchable combobox to a catalog category. The configuration snapshot stores the selected value as a UUID (CatalogProduct.id or CatalogProductVariant.id, per the attribute's `attribute_type`). Sub-spec b Step 2 does a **type-directed** lookup on that UUID — `'product'` → `CatalogProduct.findById`, `'product_variant'` → `CatalogProductVariant.findById` — with no fallback / no code-to-entity disambiguation. Follows Carbon ERP `configurationParameter` pattern, simplified by splitting the single `'material'` type and storing UUIDs instead of codes |
 
 ## Data Models
 
@@ -88,9 +86,9 @@ Defines one configuration axis for a product (e.g., "fabric", "seat type", "leg 
 | `product_id` | UUID | NOT NULL | — | FK to CatalogProduct (cross-package, UUID). The master product this attribute belongs to |
 | `key` | VARCHAR(100) | NOT NULL | — | Technical identifier, snake_case. Used in variant_condition across BOM and routing. **Namespace rule: this key IS the variant_condition key.** UNIQUE per (organization_id, tenant_id, product_id). Should not be renamed after first use in variant_condition |
 | `label` | VARCHAR(255) | NOT NULL | — | Human-readable display name (e.g., "Seat Type", "Fabric"). Translatable via translations.ts. Freely editable without breaking variant_conditions |
-| `attribute_type` | VARCHAR(20) | NOT NULL | 'enum' | Type of attribute. Values: 'enum' (select from list), 'numeric_range' (slider/input), 'boolean' (toggle), 'text' (free text), 'material' (live catalog lookup). VARCHAR for extensibility |
-| `allowed_values` | JSONB | nullable | null | For enum: `["SD01N","SD02N","SD03"]`. For numeric_range: `{"min":60,"max":260,"step":10}`. Null for boolean, text, material |
-| `material_filter_id` | UUID | nullable | null | FK to CatalogProduct category (cross-package, UUID). Only for attribute_type='material' — filters which products appear in the selector |
+| `attribute_type` | VARCHAR(20) | NOT NULL | 'enum' | Type of attribute. Values: `'enum'` (select from list), `'numeric_range'` (slider/input), `'boolean'` (toggle), `'text'` (free text), `'product'` (live CatalogProduct lookup — option resolves to a Product), `'product_variant'` (live CatalogProductVariant lookup — option resolves to a ProductVariant). VARCHAR for extensibility |
+| `allowed_values` | JSONB | nullable | null | For `enum`: `["SD01N","SD02N","SD03"]`. For `numeric_range`: `{"min":60,"max":260,"step":10}`. Null for `boolean`, `text`, `product`, `product_variant` |
+| `product_filter_id` | UUID | nullable | null | FK to CatalogProduct category (cross-package, UUID). Only for `attribute_type = 'product'` or `'product_variant'` — scopes the searchable combobox to a catalog category so new products/variants in that category automatically appear in the configurator |
 | `is_mandatory` | BOOLEAN | NOT NULL | true | Must the user select a value? Non-mandatory attributes can be left empty |
 | `display_order` | INTEGER | NOT NULL | 0 | UI ordering of attributes within the configurator |
 | `default_value` | VARCHAR(255) | nullable | null | Pre-selected value. Null = no default |
@@ -152,19 +150,19 @@ type ResolutionInput = {
      - `set_default`: if target attribute has no value, set it (user can change later)
    - Continue to next rule (rules can cascade — rule A's output affects rule B's condition)
 
-3. **Build resolved variant conditions** — transform the final snapshot into the format expected by BOM explosion and routing:
+3. **Build resolved variant conditions** — return the final snapshot in the same shape as BOM explosion's `variantConditions` input. The map has one selected value per key; no array wrapping. Example:
    ```typescript
-   // Input snapshot: {"seat_type": "SD04", "fabric": "Soro_61", "backrest": "OP62"}
-   // Output: {"seat_type": ["SD04"], "fabric": ["Soro_61"], "backrest": ["OP62"]}
+   // Input snapshot:  {"seat_type": "SD04", "fabric": "<product-variant-uuid>", "backrest": "OP62"}
+   // Output (resolvedConditions): same shape — {"seat_type": "SD04", "fabric": "<product-variant-uuid>", "backrest": "OP62"}
    ```
-   Each key maps to a single-element array — matching the variant_condition AND-match format.
+   When the input snapshot already contains UUIDs for `product` / `product_variant` attributes, constraint evaluation may rewrite or remove other keys but never wraps values in arrays. Consumers (BOM explosion Step 1, Step 2, Step 3; routing variant override matching) read scalar values and compare them against filter arrays on `BomLine.variant_condition` / `OperationTemplateVariant.variant_condition` (scalar-in-array inclusion).
 
 ### Output
 
 ```typescript
 type ResolutionResult = {
-  resolvedConditions: Record<string, string[]>  // feeds into BOM explosion + routing
-  resolvedSnapshot: Record<string, string>      // final snapshot after constraint evaluation
+  resolvedConditions: Record<string, string>    // feeds into BOM explosion + routing (same shape as ExplosionInput.variantConditions)
+  resolvedSnapshot: Record<string, string>      // final snapshot after constraint evaluation (equivalent to resolvedConditions in this pass-through design; kept as a separate field for future divergence if constraint evaluation grows richer)
   errors: string[]                              // blocking: invalid combinations
   warnings: string[]                            // non-blocking: missing attributes, forced changes
   appliedRules: string[]                        // rule IDs that fired (for debugging)
@@ -204,7 +202,10 @@ The namespace rule is the key architectural constraint connecting the configurat
 | Constraint rule actions | ConstraintRule.action_data | configurator |
 | Configuration snapshot | (JSONB on future SalesOrderLine, CPA, WorkOrder) | various |
 
-**Enforcement:** When saving a BomLine or OperationTemplateVariant with non-null variant_condition, validate that all keys in the JSONB match an existing ConfigAttribute.key for the same product. This is a **warning, not a block** — per Graceful Incompleteness, BOM/routing data may be created before configurator attributes are defined. The namespace rule is enforced at validation time (resolve endpoint), not at save time.
+**Enforcement — two layers:**
+
+- **Save-time (design time)**: when saving a BomLine or OperationTemplateVariant with non-null `variant_condition`, or a BomLine with non-null `product_resolve_key`, validate that all referenced keys match an existing `ConfigAttribute.key` for the same master product. Unknown key = **warning, not block** — per Graceful Incompleteness, BOM/routing data may be drafted before configurator attributes are defined.
+- **Runtime (explosion time)**: BOM explosion Step 2 performs a type-directed lookup for every BomLine with `product_resolve_key` set. The worker loads the master product's `ConfigAttribute` records once, reads the `attribute_type` for the resolve key (`'product'` or `'product_variant'`), and looks up the corresponding catalog table by the UUID carried in `variantConditions[key]`. When the key is missing from `variantConditions`, or the UUID does not match any row in the expected catalog table, or the ConfigAttribute's `attribute_type` cannot drive dynamic resolution (e.g., `'enum'`), the output `ExplosionLine` is emitted with `productId` null and a specific warning is appended to `result.warnings[]` keyed by `bomLineId`. Explosion continues (partial result); downstream consumers (MRP, work orders, purchasing) filter lines with `productId === null` out of planning totals but the UI surfaces them so the user can see what's missing.
 
 ## API Contracts
 
@@ -251,7 +252,7 @@ All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `op
 - `POST /api/manufacturing/configurator/validate-namespace` — Validate variant_condition keys against ConfigAttribute names
   - Request: `{ productId: string, variantCondition: Record<string, unknown> }`
   - Response: `{ valid: boolean, unknownKeys: string[], warnings: string[] }`
-  - Used by BOM and routing UIs when editing variant_condition fields
+  - Used by BOM and routing UIs when editing variant_condition fields. Also accepts BomLine `product_resolve_key` values for the same warning-only validation — callers pass the single key as `{ productId, variantCondition: { [resolveKey]: null } }` and the endpoint responds as if that key appeared on a variant_condition map
 
 ## Commands & Events
 
@@ -360,8 +361,8 @@ DataTable of ConfigAttribute via `/api/manufacturing/config-attribute?product_id
 |---|---|
 | Key | Technical key (monospace) |
 | Label | Display name (translatable) |
-| Type | Badge: `enum` / `numeric_range` / `boolean` / `text` / `material` |
-| Values | Per type: `enum` → comma-separated preview of `allowed_values` (e.g., "SD01, SD02, SD03"); `numeric_range` → "min – max (step)" (e.g., "0 – 100 (5)"); `boolean` → "Yes / No"; `text` → "Free text"; `material` → CatalogCategory name as link to `/backend/catalog/categories/[id]`, or "No category selected" if `material_filter_id` is null |
+| Type | Badge: `enum` / `numeric_range` / `boolean` / `text` / `product` / `product_variant` |
+| Values | Per type: `enum` → comma-separated preview of `allowed_values` (e.g., "SD01, SD02, SD03"); `numeric_range` → "min – max (step)" (e.g., "0 – 100 (5)"); `boolean` → "Yes / No"; `text` → "Free text"; `product` / `product_variant` → CatalogCategory name as link to `/backend/catalog/categories/[id]`, or "No category selected" if `product_filter_id` is null |
 | Mandatory | Checkbox icon |
 | Group | `attribute_group` label |
 | (reorder) | Inline up/down arrow buttons (visible when `configurator.edit` granted) |
@@ -389,7 +390,8 @@ Header actions: "Add Attribute" (primary), **"Test Configuration"** (secondary/g
 - `numeric_range` → three inputs: min, max, step → serialized to `allowed_values: {min, max, step}`
 - `boolean` → no additional fields (allowed values implicit)
 - `text` → optional validation regex (deferred — no type-specific fields in initial implementation)
-- `material` → combobox picking a CatalogCategory for `material_filter_id`
+- `product` → combobox picking a CatalogCategory for `product_filter_id`
+- `product_variant` → combobox picking a CatalogCategory for `product_filter_id` (same field, different resolution target at runtime)
 
 **Reorder**: inline up/down `IconButton` arrows in a dedicated column, calls `POST /api/manufacturing/config-attribute/reorder` with `{ sourceId, targetId }` for atomic display_order swap.
 
@@ -403,7 +405,8 @@ Dynamic form generated from active ConfigAttribute records — one field per att
 | `numeric_range` | Number input with min/max/step | `allowed_values` `{min, max, step}` |
 | `boolean` | Toggle | — |
 | `text` | Text Input | — |
-| `material` | `ComboboxInput` (from `@open-mercato/ui/backend/inputs/ComboboxInput`) | `/api/catalog/products?categoryIds=<material_filter_id>`. **Fallback:** if API call fails or category is deleted/empty, show disabled combobox with "No materials available — check category configuration" message. Never block the form — other attributes remain fillable |
+| `product` | `ComboboxInput` over CatalogProduct (from `@open-mercato/ui/backend/inputs/ComboboxInput`) | `/api/catalog/products?categoryIds=<product_filter_id>`. Selected value = `CatalogProduct.id` (UUID). Runtime Step 2 resolves the UUID to that CatalogProduct (no variant). **Fallback:** if API call fails or category is deleted/empty, show disabled combobox with "No products available — check category configuration" message. Never block the form — other attributes remain fillable |
+| `product_variant` | `ComboboxInput` over CatalogProductVariant (same primitive, different endpoint) | `/api/catalog/product-variants?categoryIds=<product_filter_id>`. Selected value = `CatalogProductVariant.id` (UUID). Runtime Step 2 resolves the UUID directly to that ProductVariant (the attribute_type on the ConfigAttribute makes the target table unambiguous — no dual-table fallback). Same fallback behavior as `product` when the API call fails or the category is empty |
 
 **Export path**: `packages/manufacturing/src/modules/configurator/components/ConfigurationForm.tsx`
 
@@ -449,12 +452,15 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 | ID | Scenario | Validates |
 |---|---|---|
 | D-UI-1 | Open product detail with `configuration_type='rule_based'` and no attributes → verify Configurator tab shows empty state → click "Add Attribute" → create enum attribute (key, label, values) → verify appears in table | Empty state, Attribute CRUD — enum |
-| D-UI-2 | Create attribute of each type (enum, numeric_range, boolean, text, material) → click "Test Configuration" → verify `ConfigurationForm` dialog renders one type-appropriate input per attribute, grouped by `attribute_group` | ConfigurationForm component — all 5 attribute_type branches |
+| D-UI-2 | Create attribute of each type (`enum`, `numeric_range`, `boolean`, `text`, `product`, `product_variant`) → click "Test Configuration" → verify `ConfigurationForm` dialog renders one type-appropriate input per attribute, grouped by `attribute_group` (Product and ProductVariant branches render ComboboxInput over their respective catalog endpoints) | ConfigurationForm component — all 6 attribute_type branches |
 | D-UI-3 | Create 3 attributes → click "Test Configuration" → fill values → click "Resolve" → verify resolved variant conditions table shows attribute key→value pairs → verify warning for unfilled mandatory attribute | Test Configuration dialog, resolve passthrough |
 | D-UI-4 | Set `configuration_type='variant_based'` on the extension → open Configurator tab → verify message "This product uses variant-based configuration..." with catalog link instead of attribute UI | Conditional tab body |
 | D-UI-5 | Set `configuration_type='none'` on the extension → verify Configurator tab not rendered in tab bar (shell decision) | Shell-side tab visibility contract |
 | D-UI-6 | Create 3 attributes → reorder via up/down buttons → verify `sort_order` updated and display order reflects change | Reorder without drag-and-drop |
 | D-UI-7 | Create attribute → create BomLine with `variant_condition` referencing that key (via BOM API) → click delete on the attribute → verify confirm dialog shows "referenced by 1 BOM line" → confirm → verify attribute soft-deleted → verify BomLine still renders with orphaned key warning badge | Delete impact warning via usage endpoint, Graceful Incompleteness. **Note:** depends on bom module Phase A (entities + CRUD, already done) — uses BOM API for fixture setup |
+| D-UI-8 | Create attribute with `attribute_type = 'product_variant'` and a `product_filter_id` pointing to a populated catalog category → click "Test Configuration" → select a ProductVariant option (combobox emits `CatalogProductVariant.id`) → click "Resolve" → verify resolved variant conditions table carries the selected UUID for that key → invoke BOM explosion for a BomLine that uses this key as `product_resolve_key` → verify the output `ExplosionLine` carries the resolved Product + ProductVariant UUIDs and no matching warning appears in `result.warnings[]` | End-to-end type-directed resolution — configurator `product_variant` → Step 2 ProductVariant branch |
+| D-UI-9 | Create attribute with `attribute_type = 'product'` → select a Product option (combobox emits `CatalogProduct.id`) → resolve → explode a BomLine with that `product_resolve_key` → verify the output line carries `productId` of the resolved Product, `productVariantId` null, and no matching warning | End-to-end type-directed resolution — configurator `product` → Step 2 Product branch |
+| D-UI-10 | Create attribute with `attribute_type = 'product_variant'` → click "Test Configuration" → **leave the attribute unfilled** → click "Resolve" → verify warning for missing mandatory attribute → explode a BomLine using that key as `product_resolve_key` → verify the output line's `productId` is null, `result.warnings[]` lists the missing key keyed by this `bomLineId`, and the UI renders the row in muted style | Runtime soft-error semantics — partial explosion via `productId === null` + targeted warning |
 
 > **Deferred tests** (will be added when ConstraintRule UI lands): rule CRUD, `require_value` resolution, `exclude_combination` error display.
 
@@ -470,12 +476,19 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 - **Mitigation**: Key is **read-only after create** (Phase C §2). To change a key, user must delete the attribute (with impact warning via usage endpoint) and re-create with the new key. Delete confirmation shows affected BomLine/OperationTemplateVariant counts
 - **Residual risk**: None — rename path eliminated by design
 
-#### material Attribute Type Depends on Catalog Data
-- **Scenario**: ConfigAttribute with `attribute_type='material'` and `material_filter_id` pointing to a product category. If that category is empty or deleted, configurator shows no options
+#### Product / ProductVariant Attribute Types Depend on Catalog Data
+- **Scenario**: ConfigAttribute with `attribute_type = 'product'` or `'product_variant'` and `product_filter_id` pointing to a catalog category. If that category is empty or deleted, the configurator shows no options
 - **Severity**: Low
-- **Affected area**: Configurator UI for material-type attributes
-- **Mitigation**: Configurator queries CatalogProduct filtered by category. Empty result = show "No materials available" message (not error). Deleted category = material_filter_id becomes orphaned FK — show "Configure material source" prompt
+- **Affected area**: Configurator UI for dynamic-catalog attribute types
+- **Mitigation**: `product` type queries CatalogProduct filtered by category (`/api/catalog/products?categoryIds=`). `product_variant` type queries CatalogProductVariant under the same category (`/api/catalog/product-variants?categoryIds=`). Empty result = show "No products/variants available" message (not error). Deleted category = `product_filter_id` becomes an orphaned FK reference — show "Configure product source" prompt. Form never blocks — other attributes remain fillable
 - **Residual risk**: None — graceful degradation
+
+#### Dynamic Resolution Failures Surface at Runtime, Not Save
+- **Scenario**: A user fills a configuration snapshot with a value whose code does not match any CatalogProduct or CatalogProductVariant (typo, deleted catalog row, wrong category), or leaves a mandatory attribute unset that drives a BomLine's `product_resolve_key`
+- **Severity**: Low
+- **Affected area**: Resolution engine output fidelity; downstream BOM explosion
+- **Mitigation**: Two-layer enforcement (see Design Decision #4). Save-time: snapshot keys validated against `ConfigAttribute.key` (warning, not block). Runtime: BOM explosion Step 2 type-directed lookup emits a per-line warning (missing key, missing UUID, wrong attribute type, or ID not found) and emits the output line with `productId === null`. MRP, purchasing, work orders must filter lines with `productId === null` out of planning; the UI surfaces them with muted styling so the user can see what's missing
+- **Residual risk**: User must trust the warnings panel to catch unresolved lines before creating a downstream work order. Planning-time consumers must honor the `productId !== null` contract
 
 #### Incomplete Configuration Data
 - **Scenario**: Product has attributes but no constraint rules. Or has rules but some reference attributes not yet created. Or configSnapshot is partial (not all mandatory attributes filled)
@@ -521,6 +534,52 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 
 **Fully compliant** — ready for implementation.
 
+## Final Compliance Report — 2026-04-17 (amendment: dynamic product attribute types)
+
+Incremental review covering the 2026-04-17 changes (`attribute_type` enum split, `material_filter_id` rename, runtime namespace rule, UUID-valued snapshot + type-directed Step 2 resolution, Test Configuration preview, D-UI-8/9/10). All prior compliance findings remain valid.
+
+### AGENTS.md Files Reviewed (delta)
+- `AGENTS.md` (root) — Contract Surfaces §8 (DB schema additive-only), §2 (type definitions), Backward Compatibility
+- `packages/core/AGENTS.md` — enum handling, ACL, events
+- `packages/shared/AGENTS.md` — Zod validator shape per `attribute_type`
+- Companion: `2026-04-03-manufacturing-product-foundation-b.md` §BOM Explosion Algorithm / Step 2 — cross-spec contract for runtime resolution
+
+### Compliance Matrix (delta)
+
+| Rule Source | Rule | Status | Notes |
+|---|---|---|---|
+| root AGENTS.md §8 | DB schema additive-only | Compliant — pre-release exception | Rename `material_filter_id` → `product_filter_id` and enum value `'material'` dropped from `attribute_type` via BC option A agreed 2026-04-17 (pre-release package). Hand-written migration |
+| root AGENTS.md §2 | Enum values STABLE once shipped | Compliant — pre-release exception | `attribute_type` adds `'product'` + `'product_variant'` and removes `'material'`. Pre-release justification |
+| root AGENTS.md | Singular naming | Compliant | `product`, `product_variant`, `product_filter_id`, `product_resolve_key` — all singular |
+| root AGENTS.md | FK IDs for cross-module links | Compliant | `product_filter_id` is UUID FK to CatalogCategory; no ORM relation. Runtime resolution references CatalogProduct / CatalogProductVariant by UUID only |
+| root AGENTS.md | Zod validation | Compliant | Type-specific branches updated: `product` and `product_variant` accept `product_filter_id` (nullable UUID); `allowed_values` null for both; save-time key validation emits warning only |
+| root AGENTS.md | Tenant isolation (`organization_id`) | Compliant | Unchanged — ConfigAttribute / ConstraintRule inherit tenant scoping |
+| root AGENTS.md | Command pattern for mutations | Compliant | No new commands — existing `configurator.config_attribute.*` and `configurator.constraint_rule.*` commands cover the updated fields |
+| root AGENTS.md | Undo contract | Compliant | Command undo restores previous field values; the enum change and rename participate automatically |
+| root AGENTS.md | Event IDs: module.entity.action (singular) | Compliant | No new events; unresolved-line information travels via the BOM explosion `warnings[]` array per 2026-04-17 decision (no `bom.bom_line.unresolved` event introduced) |
+| root AGENTS.md | API response additive | Compliant — pre-release exception | `GET /api/manufacturing/config-attribute` returns renamed `product_filter_id` + new enum values. Pre-release rename |
+
+### Internal Consistency Check (delta)
+
+| Check | Status | Notes |
+|---|---|---|
+| Data model matches API contracts | Pass | ConfigAttribute column rename + enum split consistent across data/validators/endpoints |
+| API contracts match UI/UX | Pass | Attribute editor dialog (conditional fields for `product` vs `product_variant`), ConfigurationForm input mapping, Test Configuration dialog all aligned |
+| Runtime contract with sub-spec b | Pass | Step 2 in sub-spec b consumes configurator output — type-directed lookup by UUID; unresolved lines signal via `productId === null` + per-line entry in `result.warnings[]` (no dedicated status field). Single input (`variantConditions`) shared across Steps 1 / 2 / 3 |
+| Risks cover new surfaces | Pass | Rewrote *Product / ProductVariant Attribute Types Depend on Catalog Data*; added *Dynamic Resolution Failures Surface at Runtime, Not Save* |
+| Tests cover new branches | Pass | D-UI-2 expanded to cover both new types; D-UI-8/9/10 added for end-to-end type-directed resolution (`product_variant` branch, `product` branch, unresolved partial explosion) |
+
+### Migration & Backward Compatibility (option A — pre-release rename)
+
+Packages/manufacturing is not shipped to third parties. BC contract applies to released platform surfaces; pre-release changes within a feature branch before publication are in scope. The hand-written migration must:
+1. Rename `config_attribute.material_filter_id` → `config_attribute.product_filter_id`.
+2. Update the `attribute_type` CHECK constraint (if present) to accept `'enum'`, `'numeric_range'`, `'boolean'`, `'text'`, `'product'`, `'product_variant'` — remove `'material'`.
+3. Data: no rows in production (pre-release). If any test-tenant rows exist with `attribute_type = 'material'`, map them to `'product'` + `'product_variant'` by hand based on whether the existing `material_filter_id` targets a category of Products with or without variants.
+
+### Verdict
+
+**Fully compliant** — amendment ready for implementation (code pass is a follow-up task).
+
 ---
 
 ## Implementation Status
@@ -564,6 +623,28 @@ Tests in `packages/manufacturing/src/modules/configurator/__integration__/config
 ---
 
 ## Changelog
+
+### 2026-04-17
+- **`attribute_type` enum split.** Dropped `'material'`; added `'product'` (resolves to CatalogProduct, no variants) and `'product_variant'` (resolves to CatalogProductVariant). Same `product_filter_id` field scopes both to a catalog category.
+- **`material_filter_id` → `product_filter_id`.** Rename applies to the column, Zod schema, attribute editor dialog, and ConfigurationForm type→input mapping.
+- **Namespace rule — two layers (Design Decision #4 updated).** Save-time remains a warning (Graceful Incompleteness). Runtime adds a soft-error path: BOM explosion Step 2 in sub-spec b emits the output line with `productId === null` and appends a per-line warning to `result.warnings[]` when the resolve key is missing from `variantConditions`, the supplied UUID is not found in the target catalog table, or the ConfigAttribute's `attribute_type` cannot drive dynamic resolution. Explosion continues (partial result); MRP/WO/purchasing must filter lines with `productId === null` out of planning.
+- **ConfigurationForm input table.** `material` row replaced by two rows: `product` (ComboboxInput over CatalogProduct) and `product_variant` (ComboboxInput over CatalogProductVariant). Selected value = `CatalogProduct.id` or `CatalogProductVariant.id` (UUID), consumed by sub-spec b Step 2 type-directed lookup.
+- **Snapshot values are UUIDs, not codes.** ConfigurationForm combobox emits the selected entity's `id` (standard OM behavior). Sub-spec b's Step 2 uses `attribute_type` on the ConfigAttribute to pick the correct catalog table and looks up by UUID — no code-to-entity disambiguation, no fallback table. Design Decision #5 captures this as the OM-native approach (UUID-valued snapshots are consistent with OM-wide UUID conventions).
+- **`resolvedConditions` shape simplified.** Dropped the single-element-array wrapping. Output is now `Record<string, string>` — one selected value per key — matching the new shape of sub-spec b's `ExplosionInput.variantConditions`. Only filter columns (`BomLine.variant_condition`, `OperationTemplateVariant.variant_condition`) keep arrays, where they meaningfully express "active for any of these values"; user selections do not.
+- **Removed `Market Reference` blockquote** from §Proposed Solution (Carbon ERP / SAP LO-VC / Epicor CPQ / D365 attributions against 13 reference systems). Comparative-research framing not consistent with OM's spec style. The relevant Carbon ERP attribution already lives in the Rationale column of Design Decision #5 where it's architecturally load-bearing.
+- **Attributes section type badge + values rendering.** Badge now shows `product` / `product_variant` instead of `material`; values column preview updated.
+- **Integration tests.** D-UI-2 expanded to 6 types. D-UI-8 added (end-to-end `product_variant` type-directed branch). D-UI-9 added (type-directed `product` branch). D-UI-10 added (unresolved partial-explosion soft-error path).
+- **Risks.** Rewrote *Product / ProductVariant Attribute Types Depend on Catalog Data* (was: *material Attribute Type Depends on Catalog Data*). Added *Dynamic Resolution Failures Surface at Runtime, Not Save*.
+- **Migration.** Hand-written per external-package playbook — column rename + `attribute_type` CHECK update. Pre-release BC exception justified in 2026-04-17 amendment compliance report.
+
+### Review — 2026-04-17
+- **Reviewer**: Agent (spec-writing skill)
+- **Security**: Passed — no new auth surfaces; ACL unchanged; resolution remains a pure function
+- **Performance**: Passed — `product_filter_id` scopes the combobox category lookup; Step 2 adds one lookup per dynamic BomLine per explosion level
+- **Cache**: N/A — resolution is pure computation, no caching
+- **Commands**: Passed — no new commands; existing `configurator.config_attribute.*` cover the updated columns with undo
+- **Risks**: Passed — new risk mitigations and residuals documented
+- **Verdict**: Approved — pending code pass (tracked separately)
 
 ### 2026-04-13
 - **Phase C UI implemented**: ConfiguratorTab (thin shell with variant_based/rule_based/none branches), AttributesSection (full CRUD DataTable with pill-styled enum values, inline reorder arrows, CrudForm dialog with type-reactive fields, tags input for enums, delete with usage-check confirmation, Test Configuration dialog), ConfigurationForm (dynamic form with 5 type branches, fieldset grouping, ComboboxInput for material, Cmd+Enter submit), useConfigAttributeKeys and useIsConfiguratorReady hooks. New endpoints: atomic reorder (`POST config-attribute/reorder`) and usage count (`GET config-attribute/usage?id=`). Tab persistence via URL hash. Spec updated for reorder UX, material ComboboxInput, query-param usage endpoint, text regex deferred.

@@ -39,8 +39,6 @@ The manufacturing module's entity layer (sub-specs a–d) is implemented with fu
 
 The manufacturing detail page is the "product card" — one place to see and edit everything about how a product is manufactured, without navigating to separate module pages for BOM, routing, or configurator.
 
-> **Market Reference**: Single product card approach follows Katana MRP (4 tabs, 0 clicks to BOM/routing) and MRPeasy (flat single page) patterns, with enterprise-level data depth. SAP's 25+ scattered views is the anti-pattern to avoid.
-
 ## Problem Statement
 
 1. **No UI for manufacturing data.** All 14 manufacturing entities have CRUD APIs and backend logic, but the only UI is placeholder stubs ("will be implemented here"). Users cannot interact with BOM, routing, or configurator data through the browser.
@@ -166,7 +164,7 @@ Injected into the main sidebar via the existing `product_master.injection.manufa
 
 **Production methods section:**
 - List of ProductionMethod records for this product
-- Each card/row shows: name, version, lifecycle state badge (draft/active/superseded/archived), is_default flag, linked BOM name (or "No BOM"), linked routing name (or "No routing")
+- Each card/row shows: name, version, lifecycle state badge (draft/active/superseded/archived), is_default flag, linked BOM name (or "No BOM" in neutral style — not an error), linked routing name (or "No routing" in neutral style — not an error). Unlinked BOM/routing is expected during incremental product build-out, not a validation failure
 - Actions: Add PM, Edit PM (dialog), Delete PM, Set as default
 - For most products: 1 PM. UI works for 1–5.
 
@@ -242,18 +240,6 @@ All UI follows the Graceful Incompleteness principle from the parent spec:
 | Configurator tab, no attributes | "No configuration attributes defined. Add attribute →" with add button |
 | Production methods, none | "No production methods. Add production method →" |
 | Dependencies section, none | "No dependencies defined. Operations will follow sequence order." |
-
-### Incomplete Data Indicators
-
-| Data State | Display |
-|---|---|
-| BomLine with null material_id | Row with "Material not selected" placeholder, warning icon |
-| BomLine with null quantity | "—" in quantity column, tooltip "Quantity not set" |
-| Operation with null work_center | "No work center" in work center column, warning icon |
-| Operation with null run_time | "—" in time column, tooltip "Time not set — will be treated as 0 in calculations" |
-| Variant condition with unknown key | Warning badge on row: "Unknown key: seat_type" |
-| PM with no BOM linked | "No BOM" in BOM column, neutral style (not error) |
-| PM with no routing linked | "No routing" in routing column, neutral style |
 
 ### Validation Behavior
 
@@ -462,6 +448,19 @@ Per-tab UI phases (previously Phase 4–6 here) are now owned by their respectiv
 ---
 
 ## Changelog
+
+### 2026-04-17
+- **§Graceful Incompleteness in UI tightened.** Removed the `Incomplete Data Indicators` table entirely: per-tab rendering contracts belong in the respective sub-spec (b/c/d) per this spec's TLDR, and leaving a pointer table here just duplicated navigation that readers can do themselves. The two genuinely cross-cutting rows (PM with no BOM / no routing) moved into the Overview tab's production methods section where they render. Net: this spec now covers only what it owns (Empty States for sections and Validation Behavior policy), no cross-spec drift risk.
+- **Removed `Market Reference` blockquote** from §Overview (Katana / MRPeasy / SAP-as-anti-pattern UI attributions). Comparative-research framing not consistent with OM's spec style.
+
+### Review — 2026-04-17
+- **Reviewer**: Agent (spec-writing skill)
+- **Security**: Passed — no new auth surfaces
+- **Performance**: N/A — UI-spec-level contract only
+- **Cache**: N/A
+- **Commands**: N/A
+- **Risks**: Passed — no new UI-level risks; runtime unresolved-line display handled by sub-spec b Risks section
+- **Verdict**: Approved
 
 ### 2026-04-11
 - **Spec refactor**: Narrowed scope to UI foundation only — shell, navigation, product list, detail shell + Overview tab, master data CRUD. Per-tab UI (Configurator, BOM, Routing) migrated to sub-specs b, c, d (Phase C of each). Phase 7 (seed data) dropped — handled via app-level demo module pattern. Tests 10–24 redistributed to owning sub-specs. Renamed spec to "Manufacturing UI Foundation."

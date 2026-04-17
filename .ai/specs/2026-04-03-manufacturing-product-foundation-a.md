@@ -48,8 +48,6 @@ This sub-spec creates the package scaffold and foundational product master data 
 
 This is the minimum viable foundation that sub-specs b (BOM), c (routing), and d (configurator) build on.
 
-> **Market Reference**: ProductionMethod as BOM↔Routing bridge follows D365 BC's "Routing Link" pattern. SupplierInfo follows SAP's Purchase Info Record (PIR) — vendor×material master with price, lead time, MOQ. UnitOfMeasure as master catalog follows 9/13 reference systems that use per-item conversions rather than global UoM categories.
-
 ## Problem Statement
 
 1. **No manufacturing classification on products.** OM's CatalogProduct has no concept of "make vs buy", no configuration type, no base unit of measure for production. Manufacturing modules (BOM, routing, MRP) need these fields on every product.
@@ -495,6 +493,9 @@ defaultRoleFeatures: {
 ---
 
 ## Changelog
+
+### 2026-04-17
+- **Removed `Market Reference` blockquote** from §Overview (ProductionMethod / SupplierInfo / UoM pattern attributions against 13 reference systems). The comparative-research framing is not consistent with the rest of OM's spec style. Where a pattern attribution is genuinely load-bearing for a design decision, it can live in the Rationale column of the Design Decisions table; nothing in this spec required that.
 
 ### 2026-04-06
 - Review fixes: added is_phantom_default field, service procurement type, production-method resolve endpoint (POST with ACL product_master.view + openApi export). Added Phase E for pending code changes. Status → In Progress
