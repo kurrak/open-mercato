@@ -217,12 +217,12 @@ test.describe("D-UI-8 / B-UI-13: 'product_variant' attribute_type → explosion 
 
 // ---------------------------------------------------------------------------
 // D-UI-10 — soft-error path: unresolved → emit productId: null with structured
-// per-line warning (spec b B5 contract). variantConditions omits the resolve
-// key; Step 2 emits a warning; B5 emit-on-null keeps the row in the result so
-// the UI can surface it muted.
+// per-line warning (spec b §Output contract). variantConditions omits the
+// resolve key; Step 2 emits a warning; the emit-on-null contract keeps the row
+// in the result so the UI can surface it muted.
 // ---------------------------------------------------------------------------
 
-test.describe('D-UI-10: unresolved dynamic BomLine → null productId + keyed warning (B5 soft-error)', () => {
+test.describe('D-UI-10: unresolved dynamic BomLine → null productId + keyed warning (soft-error)', () => {
   test('missing resolve-key value → line emitted with null productId + keyed warning', async ({ request }) => {
     let token: string | null = null
     let masterId: string | null = null
@@ -263,7 +263,8 @@ test.describe('D-UI-10: unresolved dynamic BomLine → null productId + keyed wa
       bomLineId = bomLine.id
 
       // Intentionally omit 'fabric' from variantConditions — Step 2 can't
-      // resolve; B5 keeps the row with productId null + keyed warning.
+      // resolve; the emit-on-null contract keeps the row with productId
+      // null + a keyed warning.
       const result = await explodeBomAndWait(request, token, {
         bomHeaderId: bomHeader.id,
         variantConditions: {},
@@ -275,11 +276,11 @@ test.describe('D-UI-10: unresolved dynamic BomLine → null productId + keyed wa
       expect(line.productId).toBeNull()
       expect(line.productVariantId).toBeNull()
 
-      // Structured warnings: per-line entries carry bomLineId. B5 emits
-      // exactly 2 warnings on this line — the Step 2 failure reason and
-      // the downstream-contract note — anchored with toBe(2) so if a third
-      // warning leaks in (e.g. a future refactor double-appends), the test
-      // fails rather than silently tolerating drift.
+      // Structured warnings: per-line entries carry bomLineId. Exactly 2
+      // warnings fire on this line — the Step 2 failure reason and the
+      // downstream-contract note — anchored with toHaveLength(2) so if a
+      // third warning leaks in (e.g. a future refactor double-appends),
+      // the test fails rather than silently tolerating drift.
       const lineWarnings = result.warnings.filter((w) => w.bomLineId === bomLine.id)
       expect(lineWarnings).toHaveLength(2)
       expect(lineWarnings.some((w) => w.message.includes("resolve key 'fabric' missing from variantConditions"))).toBe(

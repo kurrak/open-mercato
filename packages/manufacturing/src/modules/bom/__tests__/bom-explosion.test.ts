@@ -190,11 +190,11 @@ describe('explodeBom', () => {
     expect(result.warnings).toHaveLength(0)
   })
 
-  it('emits lines with null productId and attaches a keyed warning (B5 soft-error contract)', async () => {
-    // B5 flipped the old skip-on-null behavior: unresolved lines are now
-    // emitted with productId: null so the UI can surface them, with the
-    // reason attached as a structured warning keyed by bomLineId.
-    // Downstream planning consumers (MRP, WO, purchasing) filter these out.
+  it('emits lines with null productId and attaches a keyed warning (soft-error contract)', async () => {
+    // Unresolved lines are emitted with productId: null so the UI can
+    // surface them; the reason is attached as a structured warning keyed
+    // by bomLineId. Downstream planning consumers (MRP, WO, purchasing)
+    // filter these out.
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: null, netQuantity: '1' }),
@@ -663,7 +663,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       emptyContext(),
     )
 
-    // B5 emit-on-null: the line surfaces with productId null + a keyed warning.
+    // Emit-on-null: the line surfaces with productId null + a keyed warning.
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].productId).toBeNull()
     expect(
@@ -880,7 +880,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
   })
 
   it('defense-in-depth: rejects a line carrying both product_id and product_resolve_key', async () => {
-    // B2 Zod prevents this at save time (spec b §BomLine Constraints). If a
+    // Zod prevents this at save time (spec b §BomLine Constraints). If a
     // migration or direct-SQL write bypasses Zod, Step 2 must surface the
     // inconsistency rather than silently overwriting the static product.
     const headers = [makeHeader({ id: 'bom-1' })]
@@ -903,7 +903,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
     )
 
     // Even though variantConditions would resolve, the line is flagged as
-    // unresolved and emitted with productId: null (B5 emit-on-null).
+    // unresolved and emitted with productId: null.
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].productId).toBeNull()
     expect(
@@ -917,7 +917,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
   })
 
   it('defense-in-depth: rejects product_resolve_key on a semi_product line', async () => {
-    // B2 Zod forbids resolve-key on semi_product (lineType scope rule).
+    // Zod forbids resolve-key on semi_product (lineType scope rule).
     // Bypass path should produce a dedicated warning and skip Step 2 entirely.
     const headers = [
       makeHeader({ id: 'bom-parent' }),
@@ -967,10 +967,10 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
 })
 
 // ---------------------------------------------------------------------------
-// Tests: Warning shape + consumer helpers (B5)
+// Tests: Warning shape + consumer helpers
 // ---------------------------------------------------------------------------
 
-describe('explodeBom — structured warnings (B5)', () => {
+describe('explodeBom — structured warnings', () => {
   it('emits graph-level warnings with bomLineId: null', async () => {
     // Max depth is a graph-level condition, not tied to any specific line.
     const headers = [

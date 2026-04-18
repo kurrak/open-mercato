@@ -3,9 +3,6 @@ import { apiRequest } from '@open-mercato/core/helpers/integration/api'
 
 // Integration-test fixtures for the bom module — BomHeader / BomLine /
 // BomLineVariant CRUD + async explosion via the worker/progress pair.
-// Moved here from configurator/__integration__/helpers in the B6c review
-// pass so the bom integration suite stops depending on a sibling module's
-// helpers directory.
 
 export type BomHeaderFixture = { id: string }
 
@@ -54,12 +51,12 @@ export async function deleteBomHeaderIfExists(
   }
 }
 
-// BomLine create per spec b §Data Models (post-B1 rename). `productId` is the
-// static product pointer (null in dynamic mode or for draft placeholders);
-// `productVariantId` is optional static variant pin (requires productId);
-// `productResolveKey` flips the line into dynamic mode (resolves at explosion
-// time via ConfigAttribute.attribute_type). netQuantity + uomId are the
-// quantity/unit pair consumed by the explosion output.
+// BomLine create per spec b §Data Models. `productId` is the static product
+// pointer (null in dynamic mode or for draft placeholders); `productVariantId`
+// is optional static variant pin (requires productId); `productResolveKey`
+// flips the line into dynamic mode (resolves at explosion time via
+// ConfigAttribute.attribute_type). netQuantity + uomId are the quantity/unit
+// pair consumed by the explosion output.
 export async function createBomLineFixture(
   request: APIRequestContext,
   token: string,
@@ -116,7 +113,7 @@ export async function deleteBomLineIfExists(
 
 // BomLineVariant override pair per spec b §BomLineVariant Constraints.
 // Activation is XOR: exactly one of variantId or variantCondition. Override
-// pair: productOverrideId + productVariantOverrideId (B2 Zod enforces the
+// pair: productOverrideId + productVariantOverrideId (Zod enforces the
 // "variant without product" invariant; the drift guard in the bom-line-variant
 // command ensures variant.product_id === productOverrideId).
 export async function createBomLineVariantFixture(

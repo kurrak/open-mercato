@@ -119,8 +119,8 @@ export type ExplosionLine = {
   bomLineId: string
   // Post-override. Null means the line could not be resolved to a concrete
   // Product at any step (static null, Step 2 failure, no override saved it).
-  // B4 currently still skips lines with null productId; B5 flips the contract
-  // to emit the row with null so the UI can display it muted.
+  // Null-productId rows are emitted for UI display; downstream planning
+  // consumers (MRP, WO, purchasing) MUST filter them from demand totals.
   productId: string | null
   // Post-override. Null when: (a) static line had no variant pin; (b) Step 2
   // resolved to a 'product' attribute (no variant); (c) override had
@@ -137,7 +137,7 @@ export type ExplosionLine = {
   isConsumable: boolean
 }
 
-// Structured explosion warning (spec b B5 soft-error contract).
+// Structured explosion warning (spec b §Output soft-error contract).
 //
 // `bomLineId` identifies the owning BomLine when the warning is line-specific
 // (failed dynamic resolution, malformed override, null product, etc.). Graph-
@@ -203,7 +203,7 @@ function resolveFromResolveKey(
     return { productId: line.productId, productVariantId: line.productVariantId, warning: null }
   }
 
-  // B2 Zod (spec b §BomLine Constraints) forbids semi_product lines from
+  // Zod (spec b §BomLine Constraints) forbids semi_product lines from
   // carrying product_resolve_key — they reference a child BOM, not a
   // concrete product. Defense-in-depth for bypass paths (migration /
   // direct-SQL writes): surface a dedicated warning rather than running
@@ -216,9 +216,10 @@ function resolveFromResolveKey(
     }
   }
 
-  // B2 Zod forbids lines from carrying both product_id and product_resolve_key
-  // (static XOR dynamic). Defense-in-depth: spec b line 146 mandates that
-  // Step 2 detects the inconsistency, leaves productId null, and warns.
+  // Zod forbids lines from carrying both product_id and product_resolve_key
+  // (static XOR dynamic). Defense-in-depth: spec b §BomLine Constraints
+  // mandates that Step 2 detects the inconsistency, leaves productId null,
+  // and warns.
   if (line.productId) {
     return {
       productId: null,
@@ -294,7 +295,7 @@ function resolveFromResolveKey(
 //     have variants, or no specific variant is pinned).
 //   - Both set → product + variant overridden from the pair.
 //   - productVariantOverrideId set WITHOUT productOverrideId → malformed
-//     (B2 Zod should have rejected it on save; defensive here). Skip the
+//     (Zod should have rejected it on save; defensive here). Skip the
 //     override pair, emit a warning.
 function applyLineVariantOverrides(
   line: BomLineData,
@@ -486,7 +487,7 @@ export async function explodeBom(
 
       // Material line.
       //
-      // B5: unresolved lines (productId: null after Step 2 + Step 3) are
+      // Unresolved lines (productId: null after Step 2 + Step 3) are
       // emitted — matches the semi-product branch above — so the UI can
       // surface muted-styled rows. Downstream planning consumers (MRP,
       // work orders, purchasing) MUST filter `productId === null` rows

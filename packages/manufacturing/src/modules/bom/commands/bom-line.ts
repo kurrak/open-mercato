@@ -34,7 +34,7 @@ function buildInvariantHttpError(violations: InvariantViolation[]): CrudHttpErro
   })
 }
 
-// TODO (B2+UI): product_resolve_key namespace probe against ConfigAttribute.key
+// TODO (UI): product_resolve_key namespace probe against ConfigAttribute.key
 // on the master product is warning-only per Graceful Incompleteness. Surface
 // it at UI-side pre-save via POST /api/manufacturing/configurator/validate-namespace
 // (see spec d §API Contracts / namespace probe pattern). The command path

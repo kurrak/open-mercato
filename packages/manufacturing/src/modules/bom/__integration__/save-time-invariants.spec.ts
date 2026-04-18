@@ -12,16 +12,16 @@ import {
   deleteBomLineIfExists,
 } from './helpers/fixtures'
 
-// B6c — Save-time invariant + drift-guard rejections (spec b §Integration
-// Tests). All four scenarios are negative tests: malformed payload hits
-// POST /api/bom/bom-line or /api/bom/bom-line-variant and MUST be rejected
-// with a targeted 400 before anything persists.
+// Save-time invariant + drift-guard rejections (spec b §Integration Tests
+// B-UI-17/18/19/20). All four scenarios are negative tests: malformed payload
+// hits POST /api/bom/bom-line or /api/bom/bom-line-variant and MUST be
+// rejected with a targeted 400 before anything persists.
 //
 // Two error shapes coexist:
-//   - Zod superRefine failures (schema-level invariants, B2) surface via
+//   - Zod superRefine failures (schema-level invariants) surface via
 //     the CRUD factory's ZodError handler as
 //       { error: 'Invalid input', details: [{ path, message, code }, ...] }
-//   - Command-level drift guards (B2) throw CrudHttpError with
+//   - Command-level drift guards throw CrudHttpError with
 //       { error: '<first message>', fieldErrors: { <field>: '<message>' } }
 //     built by buildInvariantHttpError.
 //

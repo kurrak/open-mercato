@@ -69,8 +69,8 @@ const lineTypes = ['material', 'semi_product'] as const
 //
 // Intentionally does NOT probe `productResolveKey` against ConfigAttribute.key
 // — that is a warning-only save-time concern, handled at UI-side pre-save via
-// POST /api/manufacturing/configurator/validate-namespace. See B2 TODO in
-// commands/bom-line.ts.
+// POST /api/manufacturing/configurator/validate-namespace. See the UI TODO
+// in commands/bom-line.ts.
 export type BomLineInvariantState = {
   lineType?: string | null
   productId?: string | null

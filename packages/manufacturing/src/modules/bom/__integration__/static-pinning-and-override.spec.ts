@@ -17,16 +17,16 @@ import {
   queryWhereUsed,
 } from './helpers/fixtures'
 
-// B6b — Static pinning + override pair propagation (spec b §Integration
-// Tests B-UI-12 + B-UI-16). Both are happy-path end-to-end tests:
+// Static pinning + override pair propagation (spec b §Integration Tests
+// B-UI-12 + B-UI-16). Both are happy-path end-to-end tests:
 //
-// - B-UI-12 exercises B1's schema additions (product_variant_id column on
-//   BomLine + where-used query covering product_variant_id match).
-// - B-UI-16 exercises B4's override-pair propagation — a matched
+// - B-UI-12 exercises the product_variant_id column on BomLine + the
+//   where-used query's 4-way match covering product_variant_id.
+// - B-UI-16 exercises the override-pair propagation — a matched
 //   BomLineVariant with (productOverrideId, productVariantOverrideId)
 //   overwrites both fields on the emitted ExplosionLine.
 //
-// D-UI-8 already covers the dynamic resolution happy path; B-UI-16 here
+// D-UI-8 already covers the dynamic-resolution happy path; B-UI-16 here
 // covers the orthogonal case: static BomLine + override wins on match.
 
 function makeSuffix(): string {
@@ -96,7 +96,7 @@ test.describe('B-UI-12: static BomLine pins product_variant_id + where-used cove
       expect(result.warnings.filter((w) => w.bomLineId === bomLine.id)).toHaveLength(0)
 
       // Where-used: querying by productVariantId must return the BomHeader
-      // that contains this line. B1 rewrote where-used to also match
+      // that contains this line. The where-used endpoint matches
       // product_variant_id on master lines (and BomLineVariant override
       // pairs); this test exercises the master-line path.
       const items = await queryWhereUsed(request, token, {
