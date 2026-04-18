@@ -1,4 +1,5 @@
 import type { ProductionMethod, LifecycleState } from '../data/entities'
+import { matchVariantCondition } from '../../../lib/variant-condition'
 
 export type ResolveResult = {
   productionMethod: ProductionMethod | null
@@ -17,7 +18,7 @@ export type ResolveResult = {
  */
 export function resolveProductionMethod(
   productionMethods: ProductionMethod[],
-  variantConditions?: Record<string, string[]>,
+  variantConditions?: Record<string, string>,
 ): ResolveResult {
   const warnings: string[] = []
 
@@ -47,23 +48,20 @@ export function resolveProductionMethod(
 }
 
 /**
- * AND-match: every key in the PM's variant_condition must have at least one value
- * present in the provided variantConditions for that key.
+ * AND-match: every key in the PM's variant_condition must accept the user's
+ * single selected value for that key.
+ *
+ * Semantic difference vs. the shared `matchVariantCondition`: a PM with no
+ * `variant_condition` (null or `{}`) does NOT match a specific variant
+ * selection — the default-PM fallback above handles those. The shared
+ * matcher would return true for `{}`. So the guard runs first, then we
+ * delegate the actual AND-match to the shared matcher (which also brings
+ * `{not: [...]}` negation support for free, matching spec b §Data Models).
  */
 function matchesVariantCondition(
   pmCondition: Record<string, unknown> | null | undefined,
-  variantConditions: Record<string, string[]>,
+  variantConditions: Record<string, string>,
 ): boolean {
   if (!pmCondition || Object.keys(pmCondition).length === 0) return false
-
-  for (const [key, expected] of Object.entries(pmCondition)) {
-    const provided = variantConditions[key]
-    if (!provided || !Array.isArray(provided)) return false
-
-    const expectedValues = Array.isArray(expected) ? expected : [expected]
-    const hasMatch = expectedValues.some((val) => provided.includes(String(val)))
-    if (!hasMatch) return false
-  }
-
-  return true
+  return matchVariantCondition(pmCondition, variantConditions)
 }

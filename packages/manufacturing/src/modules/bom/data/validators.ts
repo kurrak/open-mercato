@@ -264,7 +264,7 @@ export type BomLineVariantUpdateInput = z.infer<typeof bomLineVariantUpdateSchem
 
 export const bomExplosionInputSchema = scopedSchema.extend({
   bomHeaderId: uuid(),
-  variantConditions: z.record(z.string(), z.array(z.string())).optional().default({}),
+  variantConditions: z.record(z.string(), z.string()).optional().default({}),
   effectiveDate: z.coerce.date().optional(),
   maxDepth: z.number().int().min(1).max(50).optional().default(10),
 })

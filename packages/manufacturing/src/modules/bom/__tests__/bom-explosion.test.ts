@@ -84,39 +84,43 @@ function defaultInput(bomHeaderId: string, overrides?: Partial<ExplosionInput>):
 // ---------------------------------------------------------------------------
 
 describe('matchVariantCondition', () => {
-  it('matches single key with matching value', () => {
-    expect(matchVariantCondition({ seat_type: ['SD01', 'SD02'] }, { seat_type: ['SD01'] })).toBe(true)
+  // Filter arrays stay as arrays on the line's variant_condition; the input
+  // side is scalar per spec b 2026-04-17. The matcher does scalar-in-array
+  // inclusion (and scalar-not-in-array for the 'not' form).
+
+  it('matches single key when input value is in the filter array', () => {
+    expect(matchVariantCondition({ seat_type: ['SD01', 'SD02'] }, { seat_type: 'SD01' })).toBe(true)
   })
 
-  it('rejects single key with non-matching value', () => {
-    expect(matchVariantCondition({ seat_type: ['SD01', 'SD02'] }, { seat_type: ['SD03'] })).toBe(false)
+  it('rejects single key when input value is not in the filter array', () => {
+    expect(matchVariantCondition({ seat_type: ['SD01', 'SD02'] }, { seat_type: 'SD03' })).toBe(false)
   })
 
   it('matches multiple keys (AND semantics)', () => {
     expect(matchVariantCondition(
       { seat_type: ['SD04'], fabric_group: ['premium', 'standard'] },
-      { seat_type: ['SD04'], fabric_group: ['premium'] },
+      { seat_type: 'SD04', fabric_group: 'premium' },
     )).toBe(true)
   })
 
   it('rejects when one key does not match (AND)', () => {
     expect(matchVariantCondition(
       { seat_type: ['SD04'], fabric_group: ['premium'] },
-      { seat_type: ['SD04'], fabric_group: ['economy'] },
+      { seat_type: 'SD04', fabric_group: 'economy' },
     )).toBe(false)
   })
 
-  it('handles negation — excludes matching values', () => {
+  it('handles negation — allows non-negated value', () => {
     expect(matchVariantCondition(
       { seat_type: { not: ['SD04'] } },
-      { seat_type: ['SD01'] },
+      { seat_type: 'SD01' },
     )).toBe(true)
   })
 
   it('handles negation — rejects negated value', () => {
     expect(matchVariantCondition(
       { seat_type: { not: ['SD04'] } },
-      { seat_type: ['SD04'] },
+      { seat_type: 'SD04' },
     )).toBe(false)
   })
 
@@ -127,8 +131,15 @@ describe('matchVariantCondition', () => {
     )).toBe(false)
   })
 
+  it('returns false when input value is the empty string (treated as missing)', () => {
+    expect(matchVariantCondition(
+      { seat_type: ['SD01'] },
+      { seat_type: '' },
+    )).toBe(false)
+  })
+
   it('returns true for empty condition (no keys)', () => {
-    expect(matchVariantCondition({}, { seat_type: ['SD01'] })).toBe(true)
+    expect(matchVariantCondition({}, { seat_type: 'SD01' })).toBe(true)
   })
 })
 
@@ -210,7 +221,7 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines)
 
     const result = await explodeBom(
-      defaultInput('bom-1', { variantConditions: { seat_type: ['padded'] } }),
+      defaultInput('bom-1', { variantConditions: { seat_type: 'padded' } }),
       loader,
     )
 
@@ -233,7 +244,7 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines, variants)
 
     const result = await explodeBom(
-      defaultInput('bom-1', { variantConditions: { cushion: ['yes'] } }),
+      defaultInput('bom-1', { variantConditions: { cushion: 'yes' } }),
       loader,
     )
 
@@ -256,7 +267,7 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines, variants)
 
     const result = await explodeBom(
-      defaultInput('bom-1', { variantConditions: { grade: ['premium'] } }),
+      defaultInput('bom-1', { variantConditions: { grade: 'premium' } }),
       loader,
     )
 
@@ -402,7 +413,7 @@ describe('explodeBom', () => {
 
     // Test 1: June date, standard config → fabric + wood + new screws (no reinforcement)
     const r1 = await explodeBom(
-      defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: ['standard'] } }),
+      defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: 'standard' } }),
       loader,
     )
     expect(r1.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2'])
@@ -411,14 +422,14 @@ describe('explodeBom', () => {
 
     // Test 2: March date, heavy duty config → fabric + wood + old screws + reinforcement
     const r2 = await explodeBom(
-      defaultInput('bom-sofa', { effectiveDate: new Date('2026-03-15'), variantConditions: { duty: ['heavy'] } }),
+      defaultInput('bom-sofa', { effectiveDate: new Date('2026-03-15'), variantConditions: { duty: 'heavy' } }),
       loader,
     )
     expect(r2.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v1', 'mat-steel-bar'])
 
     // Test 3: June date, heavy duty → fabric + wood + new screws + reinforcement
     const r3 = await explodeBom(
-      defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: ['heavy'] } }),
+      defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: 'heavy' } }),
       loader,
     )
     expect(r3.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2', 'mat-steel-bar'])
@@ -443,7 +454,7 @@ describe('explodeBom', () => {
 
     // Standard padded: base + foam at 2
     const r1 = await explodeBom(
-      defaultInput('bom-seat', { variantConditions: { seat_type: ['padded'] } }),
+      defaultInput('bom-seat', { variantConditions: { seat_type: 'padded' } }),
       loader,
     )
     expect(r1.lines).toHaveLength(2)
@@ -451,7 +462,7 @@ describe('explodeBom', () => {
 
     // XL padded: base + foam at 4 (overridden)
     const r2 = await explodeBom(
-      defaultInput('bom-seat', { variantConditions: { seat_type: ['xl_padded'] } }),
+      defaultInput('bom-seat', { variantConditions: { seat_type: 'xl_padded' } }),
       loader,
     )
     expect(r2.lines).toHaveLength(2)
@@ -459,7 +470,7 @@ describe('explodeBom', () => {
 
     // Flat (no padding): base only
     const r3 = await explodeBom(
-      defaultInput('bom-seat', { variantConditions: { seat_type: ['flat'] } }),
+      defaultInput('bom-seat', { variantConditions: { seat_type: 'flat' } }),
       loader,
     )
     expect(r3.lines).toHaveLength(1)
@@ -521,14 +532,14 @@ describe('explodeBom', () => {
 
     // Small backrest: seat + small back sub-assy + its child materials
     const rSmall = await explodeBom(
-      defaultInput('bom-chair', { variantConditions: { back_size: ['small'] } }),
+      defaultInput('bom-chair', { variantConditions: { back_size: 'small' } }),
       loader,
     )
     expect(rSmall.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-s', 'mat-wood-thin'])
 
     // Large backrest: seat + large back sub-assy + its child materials
     const rLarge = await explodeBom(
-      defaultInput('bom-chair', { variantConditions: { back_size: ['large'] } }),
+      defaultInput('bom-chair', { variantConditions: { back_size: 'large' } }),
       loader,
     )
     expect(rLarge.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-l', 'mat-wood-thick', 'mat-foam'])

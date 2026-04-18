@@ -186,5 +186,5 @@ export type UomConversionUpdateInput = z.infer<typeof uomConversionUpdateSchema>
 
 export const productionMethodResolveSchema = z.object({
   productId: uuid(),
-  variantConditions: z.record(z.string(), z.array(z.string())).optional(),
+  variantConditions: z.record(z.string(), z.string()).optional(),
 })

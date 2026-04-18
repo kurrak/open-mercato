@@ -6,7 +6,7 @@ export const BOM_EXPLODE_QUEUE = 'bom-explode'
 export type BomExplodeJobPayload = {
   progressJobId: string
   bomHeaderId: string
-  variantConditions: Record<string, string[]>
+  variantConditions: Record<string, string>
   effectiveDate: string
   maxDepth: number
   scope: {

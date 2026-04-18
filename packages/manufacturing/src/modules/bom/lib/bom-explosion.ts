@@ -50,7 +50,13 @@ export type BomLineVariantData = {
 
 export type ExplosionInput = {
   bomHeaderId: string
-  variantConditions: Record<string, string[]>
+  // One selected value per attribute key (spec b 2026-04-17). UUIDs for
+  // attribute_type = 'product' / 'product_variant'; raw option strings for
+  // 'enum' / 'boolean' / 'text' / 'numeric_range'. The configurator's
+  // resolvedConditions already produces this shape (spec d §Output).
+  // Filter arrays on BomLine.variant_condition itself stay as arrays —
+  // matchVariantCondition does scalar-in-array inclusion.
+  variantConditions: Record<string, string>
   effectiveDate: Date
   maxDepth: number
 }
@@ -106,7 +112,7 @@ function isDateEffective(line: BomLineData, effectiveDate: Date): boolean {
 function applyLineVariantOverrides(
   line: BomLineData,
   variants: BomLineVariantData[],
-  inputConditions: Record<string, string[]>,
+  inputConditions: Record<string, string>,
   variantId?: string,
 ): { productId: string | null; quantity: string | null; uomId: string | null } {
   let productId = line.productId

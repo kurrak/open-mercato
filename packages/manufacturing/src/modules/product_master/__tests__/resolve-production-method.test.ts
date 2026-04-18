@@ -63,7 +63,7 @@ describe('resolveProductionMethod', () => {
         variantCondition: { color: ['red', 'blue'] },
       }),
     ]
-    const result = resolveProductionMethod(pms, { color: ['red'] })
+    const result = resolveProductionMethod(pms, { color: 'red' })
     expect(result.productionMethod?.id).toBe('2')
     expect(result.fallback).toBe('variant_match')
   })
@@ -77,7 +77,7 @@ describe('resolveProductionMethod', () => {
         variantCondition: { color: ['red'] },
       }),
     ]
-    const result = resolveProductionMethod(pms, { color: ['green'] })
+    const result = resolveProductionMethod(pms, { color: 'green' })
     expect(result.productionMethod?.id).toBe('1')
     expect(result.fallback).toBe('default')
     expect(result.warnings).toContain('No production method matches the given variant conditions, falling back to default')
@@ -91,7 +91,7 @@ describe('resolveProductionMethod', () => {
         variantCondition: { color: ['red'] },
       }),
     ]
-    const result = resolveProductionMethod(pms, { color: ['green'] })
+    const result = resolveProductionMethod(pms, { color: 'green' })
     expect(result.productionMethod).toBeNull()
     expect(result.fallback).toBe('none')
     expect(result.warnings).toContain('No matching production method')
@@ -106,7 +106,7 @@ describe('resolveProductionMethod', () => {
       }),
     ]
     // Only one key matches
-    const result = resolveProductionMethod(pms, { color: ['red'], size: ['S'] })
+    const result = resolveProductionMethod(pms, { color: 'red', size: 'S' })
     expect(result.productionMethod).toBeNull()
     expect(result.fallback).toBe('none')
   })
@@ -119,7 +119,7 @@ describe('resolveProductionMethod', () => {
         variantCondition: { color: ['red'], size: ['L', 'XL'] },
       }),
     ]
-    const result = resolveProductionMethod(pms, { color: ['red'], size: ['L'] })
+    const result = resolveProductionMethod(pms, { color: 'red', size: 'L' })
     expect(result.productionMethod?.id).toBe('1')
     expect(result.fallback).toBe('variant_match')
   })
@@ -136,7 +136,7 @@ describe('resolveProductionMethod', () => {
       makePM({ id: '1', name: 'No condition', variantCondition: null }),
       makePM({ id: '2', name: 'Default', isDefault: true }),
     ]
-    const result = resolveProductionMethod(pms, { color: ['red'] })
+    const result = resolveProductionMethod(pms, { color: 'red' })
     expect(result.productionMethod?.id).toBe('2')
     expect(result.fallback).toBe('default')
   })

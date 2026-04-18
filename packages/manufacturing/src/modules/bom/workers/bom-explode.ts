@@ -99,7 +99,7 @@ export default async function handle(
     const result = await explodeBom(
       {
         bomHeaderId,
-        variantConditions: variantConditions ?? {},
+        variantConditions,
         effectiveDate: new Date(effectiveDate),
         maxDepth,
       },

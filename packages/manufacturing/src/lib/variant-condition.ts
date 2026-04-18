@@ -1,24 +1,28 @@
 /**
  * Shared variant condition matching logic.
  *
- * Used by BOM explosion, routing time rollup, and configurator resolution.
- */
-
-/**
- * Match a variant condition against input conditions.
+ * Used by BOM explosion (Step 1 filter + BomLineVariant override activation),
+ * routing time rollup, and production-method resolution.
  *
- * Format: { "key": ["value1", "value2"] } — all keys must match (AND).
- * Negation: { "key": { "not": ["value"] } } — excludes matching values.
+ * Asymmetry between the two arguments is deliberate:
+ *   - `lineCondition` is a *filter* on a persisted row (e.g. BomLine.variant_condition,
+ *     OperationTemplateVariant.variant_condition) and keeps its array shape:
+ *     `{ key: ['A', 'B'] }` means "active when the user picked A OR B";
+ *     `{ key: { not: ['C'] } }` means "active when the user did not pick C".
+ *   - `inputConditions` is the *user's resolved selection* — one value per
+ *     attribute — and is `Record<string, string>` per spec b's 2026-04-17
+ *     amendment. The user picks exactly one value per configuration axis.
  *
- * @returns true if all condition keys match the input
+ * The matcher is therefore scalar-in-array inclusion (and scalar-not-in-array
+ * for negation).
  */
 export function matchVariantCondition(
   lineCondition: Record<string, unknown>,
-  inputConditions: Record<string, string[]>,
+  inputConditions: Record<string, string>,
 ): boolean {
   for (const [key, conditionValue] of Object.entries(lineCondition)) {
-    const inputValues = inputConditions[key]
-    if (!inputValues || inputValues.length === 0) return false
+    const inputValue = inputConditions[key]
+    if (inputValue === undefined || inputValue === null || inputValue === '') return false
 
     if (
       typeof conditionValue === 'object' &&
@@ -27,10 +31,10 @@ export function matchVariantCondition(
       'not' in conditionValue
     ) {
       const negatedValues = (conditionValue as { not: string[] }).not
-      if (inputValues.some((v) => negatedValues.includes(v))) return false
+      if (negatedValues.includes(inputValue)) return false
     } else if (Array.isArray(conditionValue)) {
       const allowedValues = conditionValue as string[]
-      if (!inputValues.some((v) => allowedValues.includes(v))) return false
+      if (!allowedValues.includes(inputValue)) return false
     } else {
       return false
     }

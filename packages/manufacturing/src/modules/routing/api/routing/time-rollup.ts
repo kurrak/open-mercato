@@ -19,7 +19,7 @@ export const metadata = {
 const requestSchema = z.object({
   routingTemplateId: z.string().uuid(),
   quantity: z.number().min(1),
-  variantConditions: z.record(z.string(), z.array(z.string())).optional().default({}),
+  variantConditions: z.record(z.string(), z.string()).optional().default({}),
 })
 
 export async function POST(req: Request) {

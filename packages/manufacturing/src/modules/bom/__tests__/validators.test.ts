@@ -317,7 +317,7 @@ describe('BomExplosionInput validator', () => {
     const result = bomExplosionInputSchema.safeParse({
       ...scope,
       bomHeaderId: uuid,
-      variantConditions: { seat: ['SD01'] },
+      variantConditions: { seat: 'SD01' },
       effectiveDate: '2026-06-01',
       maxDepth: 5,
     })

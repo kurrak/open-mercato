@@ -77,7 +77,7 @@ export async function POST(req: Request) {
 
 const explosionRequestSchema = z.object({
   bomHeaderId: z.string().uuid(),
-  variantConditions: z.record(z.string(), z.array(z.string())).optional(),
+  variantConditions: z.record(z.string(), z.string()).optional().default({}),
   effectiveDate: z.string().optional(),
   maxDepth: z.number().int().optional(),
 })
