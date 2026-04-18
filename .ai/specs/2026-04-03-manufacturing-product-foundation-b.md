@@ -143,6 +143,8 @@ One material or child BOM reference per line. ORM relation to parent BomHeader.
 - Variant-product drift (Static mode): when `product_variant_id` is set, `product_variant.product_id === product_id` — the pinned ProductVariant must belong to the chosen Product.
 - Namespace rule: when `product_resolve_key` is set, it should match an existing `ConfigAttribute.key` on the same master product. **Warning-only** per Graceful Incompleteness — the configurator may not be defined yet when the BOM is drafted.
 
+**Authoring vs. runtime namespace (semi-products).** "Same master product" here means the product that **owns this BomHeader** — the authoring scope used to populate key suggestions in the UI editor. This is *not* the same as the runtime matching scope. At explosion time, `variantConditions` is the top-level configured master's snapshot and flows top-down through every child BomHeader unchanged (see §Algorithm Step 5 and §Variant Condition Matching). A `product_resolve_key` or `variant_condition` authored on a BomLine inside a semi-product's BOM is therefore matched against the consuming master's snapshot, not the semi-product's own ConfigAttributes. The two namespaces are expected to align for most real cases — semi-products are typically not configurable on their own — but when a user edits a semi-product's BOM tab in isolation, `useConfigAttributeKeys(semiProductId)` commonly returns an empty list. Free-text keys MUST therefore be allowed in the editor (with a non-blocking warning) because the consuming master is unknowable from a semi-product's page. See §Phase C §3 (shared VariantCondition components) for the UX contract and the Future Work note on a master-perspective viewer.
+
 **Fallback behavior if an invariant is bypassed** (e.g., a migration or direct-SQL write sidesteps Zod): Step 2 detects the inconsistency, leaves `productId` null on the output line, and appends a warning to the explosion result. The row is surfaced in the UI (row with null `productId` whose master had `product_resolve_key` → rendered as unresolved) but excluded from planning. No hard error — same soft-error channel used for all other runtime resolution failures.
 
 ### BomLineVariant
@@ -328,6 +330,8 @@ Lines with `productId === null` are included in the result (not skipped) so the 
 
 Matching logic: for each key in `variant_condition`, check that the input's single selected value for that key (`variantConditions[key]`) is contained in the filter's array (inclusive form) or is not contained (negation form). All keys must satisfy (AND). Missing key in input = no match (line skipped).
 
+**Runtime namespace is the top-level master's, not the current BomHeader's.** The `variantConditions` snapshot is the configuration of the *top-level* product on which explosion was invoked; it flows top-down through every child BomHeader unchanged (see §Algorithm Step 5). A `BomLine.variant_condition` key authored inside a semi-product's BOM matches against the consuming master's snapshot, not the semi-product's own ConfigAttributes. This is deliberate — otherwise the matcher would need to re-scope per depth and key collisions between master and semi-product namespaces would become failure modes. Authoring-side implication: a user editing a semi-product's BOM tab in isolation cannot be shown a validated key scope (the consuming master is unknown), so the editor tolerates free-text keys with a non-blocking warning. See §BomLine Constraints and §Phase C §3.
+
 ## API Contracts
 
 All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `openApi` export.
@@ -479,7 +483,46 @@ Two modes, user-togglable:
 - **Auto-resolve** (default): when the user provides config/variant in the explosion panel, the tab calls `POST /api/manufacturing/production-method/resolve` to find the best PM for the product, then uses its linked `bom_header_id`. User doesn't manually pick a BOM
 - **Manual override**: dropdown showing all BomHeaders for this product (production + packaging usage). For power users or when auto-resolution returns no match
 
-#### 3. BOM tree view
+#### 3. Shared VariantCondition components
+
+`variant_condition` values MUST NOT be exposed as raw JSON in any user-facing surface. All display and authoring goes through two shared components used by §4 (tree view row), §5 (BomLine CRUD dialog), and §6 (BomLineVariant inline section). Encapsulating read/write here means the UX can be polished later without touching every call site — the storage shape (`Record<string, string[] | { not: string[] }>`) is stable.
+
+**`VariantConditionBadges` — display**
+- Location: `packages/manufacturing/src/modules/bom/components/VariantConditionBadges.tsx`
+- Props: `{ value: Record<string, string[] | { not: string[] }> | null; productId: string; compact?: boolean }`
+- Renders one pill per key: `key: val1, val2` or `key: NOT val1`. Null / empty map → renders nothing.
+- For keys whose matching ConfigAttribute has `attribute_type = 'product'` or `'product_variant'`, values are hydrated from UUID → display name via `useCatalogLookup` (see below). On hydration failure the badge falls back to the UUID with a warning tooltip.
+- Keys that do not match any ConfigAttribute scoped to `productId` render with a muted/warning style and a tooltip: "Unknown key — matched against the consuming master's configuration at runtime." (see §BomLine Constraints and §Variant Condition Matching for why this is legitimate on semi-product BOMs.)
+
+**`VariantConditionEditor` — authoring**
+- Location: `packages/manufacturing/src/modules/bom/components/VariantConditionEditor.tsx`
+- Props: `{ value; onChange; productId: string; disabled?: boolean }`
+- Row-per-key builder with three cells + remove-row button. Add-row button at the bottom.
+  - **Key cell**: combobox sourced from `useConfigAttributeKeys(productId)` with free-text fallback. Typing an unlisted key is permitted (Graceful Incompleteness + semi-product authoring semantics).
+  - **Operator cell**: `in` / `not in` toggle — maps to the inclusive form (`["v1","v2"]`) or the negation form (`{not: ["v1","v2"]}`).
+  - **Values cell** (adapts to `ConfigAttribute.attribute_type`):
+    | attribute_type | Renderer | Stored values |
+    |---|---|---|
+    | `enum` | multi-select from `allowed_values` | raw option strings |
+    | `boolean` | true/false checkbox group | `["true"]` / `["false"]` |
+    | `numeric_range` | range-value multi-select | raw range strings |
+    | `text` | tag input | raw strings |
+    | `product` / `product_variant` | multi-select combobox scoped by the attribute's `product_filter_id` | UUIDs |
+    | unknown (free-text key, no matching ConfigAttribute) | tag input + "Unknown key" warning badge | raw strings |
+- Component state and `onChange` always use the typed `Record<string, string[] | { not: string[] }>` shape — never emits a JSON string.
+- Save-time validation is warning-only: unknown keys produce a row-level warning badge, do not block submit.
+
+**`useCatalogLookup` hook — UUID → display name resolution**
+- Location: `packages/manufacturing/src/modules/bom/hooks/useCatalogLookup.ts`
+- Signature: `useCatalogLookup(productIds: readonly string[], variantIds: readonly string[]) → { productsById, variantsById, loading, error }`
+- Batches all UUIDs referenced across all rendered `VariantConditionBadges` / `VariantConditionEditor` instances in a single request pair:
+  - `GET /api/catalog/products?ids=uuid1,uuid2,…`
+  - `GET /api/catalog/variants?ids=uuid1,uuid2,…`
+- Cached via React Query at the component mount scope. Missing IDs fall through silently — badges render a UUID + warning tooltip.
+
+**Semi-product authoring semantics.** On a semi-product's BOM tab, `useConfigAttributeKeys(productId)` commonly returns `[]`. The editor MUST still allow arbitrary keys (the consuming master is unknowable from this page). A rendered "Unknown key" warning on the row signals "this will be matched against the consuming master's snapshot at runtime" — not a save error. Future work: a "view as master X" perspective picker on the semi-product detail page (tracked in §Risks *Semi-Product Authoring Key Scope*).
+
+#### 4. BOM tree view
 
 Hierarchical expandable tree: BomHeader → BomLines. Empty state: "No bill of materials defined. Create BOM →" with primary button that opens the BomHeader create dialog.
 
@@ -487,12 +530,12 @@ Each line row displays:
 
 | Field | Display |
 |---|---|
-| Product | Static lines: Product name (with ProductVariant name appended when `product_variant_id` is pinned) linked to catalog product detail, or "Product not selected" placeholder with warning icon when both `product_id` and `product_resolve_key` are null. Dynamic lines: resolve-key badge (e.g., `⟶ fabric`); the runtime-resolved product name appears only in the explosion result panel (see §6) |
+| Product | Static lines: Product name (with ProductVariant name appended when `product_variant_id` is pinned) linked to catalog product detail, or "Product not selected" placeholder with warning icon when both `product_id` and `product_resolve_key` are null. Dynamic lines: resolve-key badge (e.g., `⟶ fabric`); the runtime-resolved product name appears only in the explosion result panel (see §7) |
 | Line type | Badge: `material` / `semi_product` |
 | Quantity | `net_qty (gross_qty)` or "—" if null |
 | UoM | Code from `unit_of_measure` lookup or "—" |
 | Scrap % | Percentage or "0%" |
-| Variant condition | Badge with key summary (e.g., "seat_type: SD01, SD02") or empty. Warning badge "Unknown key: X" when key is not in `useConfigAttributeKeys(productId)` |
+| Variant condition | `VariantConditionBadges` (see §3). Empty / null → nothing shown. Unknown keys (not in `useConfigAttributeKeys(productId)`) render with muted/warning styling |
 | Operation | Linked operation name or "—" |
 | Date range | `valid_from – valid_to` or "Always" |
 | Consumable | Flag icon if true |
@@ -502,7 +545,7 @@ Each line row displays:
 
 **Reorder** uses `sort_order` increment/decrement via API. No drag-and-drop library in OM — explicit up/down buttons on each row.
 
-#### 4. BOM line CRUD dialogs
+#### 5. BOM line CRUD dialogs
 
 **Add Material / Add Sub-assembly** header buttons → `CrudForm` dialog with:
 
@@ -517,7 +560,7 @@ Each line row displays:
 - Quantity net / gross (both nullable)
 - UoM picker: searchable combobox of UnitOfMeasure (master data from foundation spec Phase 2) with "Create new" shortcut → dialog
 - Scrap %
-- Variant condition editor: JSON object editor or key-value row editor. On save, validates keys against `useConfigAttributeKeys(productId)` — unknown keys produce a warning (non-blocking per Graceful Incompleteness)
+- Variant condition: `VariantConditionEditor` (see §3). Per-type value renderers for enum/boolean/numeric_range/text/product/product_variant. Unknown keys allowed with non-blocking warning (Graceful Incompleteness + semi-product authoring semantics)
 - Operation linker: combobox of OperationTemplate names for the routing template(s) linked to this product
 - Valid from / valid to (date pickers)
 - Consumable flag
@@ -525,18 +568,18 @@ Each line row displays:
 
 Save always succeeds for incomplete data — a Static row with null `product_id` or a Dynamic row with an unknown resolve key produces a warning badge on the row, not a save error. Save is blocked only for constraint violations (e.g., Static ProductVariant that does not belong to the chosen Product).
 
-#### 5. BomLineVariant inline section
+#### 6. BomLineVariant inline section
 
 Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant overrides for that line. Each override row shows:
 
-- Variant identifier (CatalogProductVariant name or raw `variant_condition` keys)
+- Variant identifier (CatalogProductVariant name or `VariantConditionBadges` on the override's `variant_condition` — see §3)
 - Quantity override (or "—")
 - Product override (or "—") — when set, renders as `Product name` + appended ProductVariant name if `product_variant_override_id` is also set
 - Unit override (or "—")
 
-**Inline actions**: add override (dialog), edit (dialog), delete (confirm). The add/edit dialog enforces two constraints: (a) exactly one of `catalog_product_variant_id` or `variant_condition` must be set (activation XOR); (b) the Product + ProductVariant override pair — the dialog renders a Product picker and, when a Product is chosen, an optional ProductVariant picker filtered to variants of that Product. Both override fields clear together on reset, and the ProductVariant picker is hidden when the chosen Product has no variants. Validation: `product_variant_override.product_id === product_override_id` (drift guard).
+**Inline actions**: add override (dialog), edit (dialog), delete (confirm). The add/edit dialog enforces two constraints: (a) exactly one of `catalog_product_variant_id` or `variant_condition` must be set (activation XOR — when the user picks `variant_condition`, the dialog renders a `VariantConditionEditor` instead of the variant picker); (b) the Product + ProductVariant override pair — the dialog renders a Product picker and, when a Product is chosen, an optional ProductVariant picker filtered to variants of that Product. Both override fields clear together on reset, and the ProductVariant picker is hidden when the chosen Product has no variants. Validation: `product_variant_override.product_id === product_override_id` (drift guard).
 
-#### 6. BOM explosion panel
+#### 7. BOM explosion panel
 
 **Adaptive form** — the explosion input UI adapts to what's defined. The "Explode BOM" button always works, even with incomplete data.
 
@@ -566,17 +609,17 @@ Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant
   - **Flat material list**: product name (+ variant name when present), quantity, UoM, gross quantity, level, source BOM, and a `Resolution` column showing `static` / `resolved (key)` / **`unresolved (key)`** per row. The column value is computed in the UI from the pair `(ExplosionLine.productId, master BomLine.product_resolve_key)` — no dedicated status field on the output. Unresolved rows (`productId === null` and master had a resolve key) are rendered with a muted/greyed style and a "Not in planning" badge so they are visible but not confused with planned demand
   - **Warnings panel** (collapsible): "2 lines skipped: null product_id and no product_resolve_key", "3 conditional lines skipped: no configuration provided", "1 line unresolved: resolve key 'fabric' missing from snapshot", etc.
 
-#### 7. Readiness checklist integration
+#### 8. Readiness checklist integration
 
 Expose `useIsBomReady(productId): boolean` — returns `true` when at least one BomHeader with at least one non-soft-deleted BomLine exists for the product. Foundation overview tab calls this to flip BOM ○ → ✓.
 
 Also expose `useBomName(productId): { name: string | null; ready: boolean }` for the production method cards on the overview tab to display linked BOM names.
 
-#### 8. Unit tests
+#### 9. Unit tests
 
 Already completed as part of Phase B algorithm work (`lib/bom-explosion.ts` — 16 tests, validators — 12 tests, cycle detection — 6 tests, variant matching — 8 tests). No additional unit tests required for the UI layer.
 
-#### 9. Integration tests
+#### 10. Integration tests
 
 Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts`. Playwright, API-first setup + UI navigation.
 
@@ -602,8 +645,10 @@ Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts
 | B-UI-18 | Attempt to save Static BomLine with `product_variant_id` pinned to a variant of a different Product → verify validation error (`product_variant.product_id === product_id` drift guard) | Static-mode drift guard |
 | B-UI-19 | Attempt to save BomLineVariant with `product_variant_override_id` set but `product_override_id` null → verify validation error (set-together constraint) | BomLineVariant pair constraint |
 | B-UI-20 | Attempt to save BomLineVariant with `product_override_id` + `product_variant_override_id` where the ProductVariant belongs to a different Product → verify validation error (drift guard) | `product_variant_override.product_id === product_override.id` check |
+| B-UI-21 | Open BomLine dialog on a rule-based master with enum + product_variant ConfigAttributes → `VariantConditionEditor` shows both keys in the key combobox → select the enum key, pick two allowed values → select the product_variant key, pick two variants via the catalog combobox → save → tree row renders `VariantConditionBadges` with the enum values as raw strings and the product_variant values hydrated to display names (not UUIDs) | Shared VariantCondition UX — typed authoring round-trip + UUID hydration |
+| B-UI-22 | Open BomLine dialog on a semi-product whose own ConfigAttributes is empty → key combobox is empty → type a free-text key (e.g., `fabric`) → pick values via the text fallback renderer → save → tree row renders `VariantConditionBadges` with the free-text key styled as "Unknown key" (tooltip references consuming-master runtime match) → editing the row reopens the editor with the same free-text key pre-selected | Shared VariantCondition UX — semi-product authoring with free-text keys (Graceful Incompleteness + no raw JSON) |
 
-**Testable outcome:** BOM tab visible in product detail. Add/edit lines with validated variant conditions and UoM selection. Expand variant overrides. Run explosion in all 5 adaptive panel states and see results. Overview tab reflects BOM readiness. All unit and integration tests pass.
+**Testable outcome:** BOM tab visible in product detail. Add/edit lines with validated variant conditions and UoM selection. Expand variant overrides. Run explosion in all 5 adaptive panel states and see results. Overview tab reflects BOM readiness. All unit and integration tests pass. No raw JSON surface for `variant_condition` anywhere in the UI.
 
 ## Risks & Impact Review
 
@@ -655,6 +700,14 @@ Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts
 - **Affected area**: Impact analysis, catalog lifecycle
 - **Mitigation**: `product_resolve_key` references `ConfigAttribute.key`, not a specific Product — the dynamic Product relationship emerges only at runtime when a snapshot carrying that UUID is supplied to explosion. Out-of-scope for Phase 1 where-used. When catalog lifecycle management lands (ECM module, future phase), add a snapshot-aware resolve-key traversal that, given a candidate Product / ProductVariant UUID, enumerates the `ConfigAttribute` rows whose `product_filter_id` category contains it and then the BomLines whose `product_resolve_key` matches those attribute keys
 - **Residual risk**: A deleted Product / ProductVariant that was only reachable via a resolve-key path will surface as an unresolved line at the next explosion — `productId === null` + a per-line warning in `result.warnings[]` (ID not found in the expected catalog table) — same soft-error path as any other missing resolution. No silent data loss
+
+#### Semi-Product Authoring Key Scope
+- **Scenario**: A user opens the BOM tab on a semi-product (e.g., "leg-kit sub-assembly") and edits a `variant_condition` or a `product_resolve_key` on one of its BomLines. The semi-product typically has no ConfigAttributes of its own; the keys the user actually wants belong to the *consuming master's* namespace (the chair that will embed the leg-kit). From the semi-product's page, the consuming master is unknowable — a semi-product may be embedded in multiple masters with conflicting key sets
+- **Severity**: Low
+- **Affected area**: BOM tab UX on semi-products
+- **Mitigation**: `VariantConditionEditor` tolerates free-text keys with a non-blocking "Unknown key" warning; the spec's §BomLine Constraints and §Variant Condition Matching sections make the runtime-matches-top-level-master rule explicit so users can reason about why free-text keys are legitimate. Unknown keys surface as warnings in the tree row, not errors. Runtime matching is unchanged — the top-level master's snapshot is the single source of truth at explosion time
+- **Future work — master-perspective viewer**: add a "view as master X" picker on the semi-product detail page. Given a candidate master (one of the semi-product's consumers, enumerated via where-used), the page re-scopes every `useConfigAttributeKeys(productId)` call on that page to use the master's ConfigAttributes instead of the semi-product's. The editor's key combobox then offers the master's keys with per-type value renderers. Out of scope for Phase C; tracked here so we don't repeat the design discussion when it lands
+- **Residual risk**: A user with no consuming-master context could type a key the consuming master doesn't have and never hear about it until an explosion shows the line as unmatched/skipped. Acceptable — same Graceful Incompleteness trade-off used elsewhere in the spec; the user sees the Unknown key warning while authoring
 
 ## Final Compliance Report — 2026-04-04
 
@@ -755,7 +808,7 @@ No column drops beyond the two renames. No data loss scenarios (existing `materi
 |-------|--------|------|-------|
 | Phase A — Entities + CRUD | Done | 2026-04-04 | 3 entities, 9 commands, 3 CRUD routes, where-used endpoint, cycle detection, migration |
 | Phase B — Explosion + Worker | Done | 2026-04-04 | Pure explosion algorithm, async queue worker with ProgressService, explode endpoint |
-| Phase C — Widget + Tests | In Progress | 2026-04-04 | Algorithm + unit tests done (44 tests). BOM tab placeholder landed in foundation spec Phase 3. Detailed BomTab UI migrated into this spec (2026-04-11 refactor) — implementation not started |
+| Phase C — Widget + Tests | In Progress | 2026-04-04 | Algorithm + unit tests done (44 tests). BOM tab placeholder landed in foundation spec Phase 3. Detailed BomTab UI migrated into this spec (2026-04-11 refactor). Shared VariantCondition components (§3) folded into Phase C scope on 2026-04-18 so no raw-JSON `variant_condition` surface ever ships; also added B-UI-21/22 click-through tests — implementation not started |
 | Review fixes | Done | 2026-04-06 | Removed production_method_id from BomHeader entity/validator/command/route. Added 3 bom_line_variant CRUD events. Migration regenerated |
 | 2026-04-17 amendment — code pass | Done | 2026-04-18 | Full schema + runtime + test implementation of the 2026-04-17 amendment. Entities: BomLine rename + `product_variant_id` / `product_resolve_key`, BomLineVariant rename + `product_variant_override_id`, hand-written migration, org-scoped indexes. App-layer invariants: Zod `.superRefine()` on create schemas + post-merge check in update commands (XOR static-vs-dynamic, variant-requires-product, resolve-key scope, override pair); catalog drift guards at create/update (BomLine + BomLineVariant override). Explosion: `ExplosionContext` 3rd arg with flat data types, `ExplosionLine.productVariantId` field, `resolveFromResolveKey` Step 2 helper with type-directed `'product'` / `'product_variant'` branches + five failure warnings, `applyLineVariantOverrides` carries override pair onto output. `ExplosionInput.variantConditions: Record<string, string>` (scalar-in-array matcher); configurator's `resolvedConditions` flows straight in. `ExplosionResult.warnings: ExplosionWarning[]` (structured `{ bomLineId, message }`), material-line branch emits null-productId rows so UI can surface them (downstream consumers filter `productId === null`); `warningsByLineId(result)` helper. Worker pre-loads ConfigAttribute + CatalogProduct + CatalogProductVariant maps via BFS over the BOM graph. Where-used query rewritten for 4-way match (product_id, product_variant_id, BomLineVariant override pair); resolve-key lines not traversed. 253/253 unit tests + 10/10 Playwright integration tests (dynamic resolution E2E, static pinning, override pair, save-time invariants). **UI muted styling** for null-productId rows lands with the BOM tree view (Phase C, currently a placeholder) |
 
@@ -764,6 +817,11 @@ No column drops beyond the two renames. No data loss scenarios (existing `materi
 ## Changelog
 
 ### 2026-04-18
+- **Shared VariantCondition UX folded into Phase C.** Two explicit design clarifications + a new Phase C subsection so that `variant_condition` is never exposed as raw JSON in any user-facing surface.
+  - **Authoring vs. runtime namespace (§BomLine Constraints + §Variant Condition Matching).** Made the two distinct scopes explicit: (a) *authoring* — the ConfigAttribute keys of the BomHeader's direct product, used to populate suggestions in the editor; (b) *runtime* — the top-level configured master's snapshot, which flows top-down through every child BomHeader unchanged (the algorithm Step 5 text already said this; the Constraints and Matching sections didn't). Implication for semi-product BOM tabs: `useConfigAttributeKeys(semiProductId)` is commonly empty, so the editor MUST tolerate free-text keys with a non-blocking "Unknown key" warning (the consuming master is unknowable from a semi-product's page). No runtime change — the algorithm already matches against the top-level snapshot.
+  - **New Phase C §3 — Shared VariantCondition components.** `VariantConditionBadges` (display) + `VariantConditionEditor` (authoring) + `useCatalogLookup` hook for UUID → name resolution on product / product_variant values. Row-per-key builder with per-type value renderers (enum multi-select, boolean checkboxes, numeric_range multi-select, text tags, product / product_variant multi-select combobox, unknown-key text fallback). Call sites: tree-view row (§4), BomLine CRUD dialog (§5), BomLineVariant inline override dialog (§6). Phase C subsections renumbered §3..§9 → §4..§10.
+  - **New integration tests B-UI-21 / B-UI-22.** Round-trip typed authoring + UUID hydration on a rule-based master (B-UI-21); semi-product free-text key authoring with "Unknown key" styling (B-UI-22). Both are click-through tests deferred with the rest of Phase C UI click-through.
+  - **New risk — Semi-Product Authoring Key Scope.** Documents the "consuming master unknowable from semi-product page" trade-off and tracks a future "view as master X" perspective picker as documented future work.
 - **2026-04-17 amendment — code pass complete.** Implementation of all schema, app-layer invariant, explosion-algorithm, output-contract, and integration-test changes called for by the 2026-04-17 amendment.
   - **Entities + migration.** BomLine: `material_id` → `product_id`, added `product_variant_id` + `product_resolve_key` with indexes `manufacturing_bl_org_product_idx`, `_product_variant_idx`, `_product_resolve_key_idx` (old `_org_material_idx` dropped). BomLineVariant: `material_override_id` → `product_override_id`, added `product_variant_override_id` with two new org-scoped indexes. Activation-XOR DB CHECK preserved. Migration hand-written per the external-package playbook; DB wipe + reapply via `psql DROP CASCADE` + `yarn db:migrate` (greenfield regenerates migrations and clobbers hand-written ones; do not use it for manufacturing).
   - **App-layer invariants + drift guards.** Pure invariant functions `collectBomLineInvariantViolations(state)` + `collectBomLineVariantInvariantViolations(state)` in `data/validators.ts`. Create schemas wire them via `.superRefine()`; update commands call them on the merged post-patch state before mutation and throw `CrudHttpError(400)` on violations. Catalog drift guards (BomLine variant-belongs-to-product + BomLineVariant override variant-belongs-to-override-product) run at create and update, scoped by tenantId/organizationId/deletedAt to prevent cross-tenant leakage. `product_resolve_key` namespace probe deferred to UI-side pre-save via `POST /api/manufacturing/configurator/validate-namespace` (warning-only per Graceful Incompleteness; TODO comment in `commands/bom-line.ts`).
