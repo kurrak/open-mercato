@@ -12,7 +12,7 @@ export type ResolutionInput = {
 }
 
 export type ResolutionResult = {
-  resolvedConditions: Record<string, string[]>
+  resolvedConditions: Record<string, string>
   resolvedSnapshot: Record<string, string>
   errors: string[]
   warnings: string[]
@@ -196,11 +196,11 @@ export function resolveConfiguration(input: ResolutionInput): ResolutionResult {
     )
   }
 
-  // Step 3: Build resolved variant conditions
-  const resolvedConditions: Record<string, string[]> = {}
-  for (const [key, value] of Object.entries(snapshot)) {
-    resolvedConditions[key] = [value]
-  }
+  // Step 3: Build resolved variant conditions — one selected value per key.
+  // Same shape as ExplosionInput.variantConditions (sub-spec b). Equivalent to
+  // resolvedSnapshot in this pass-through design; kept as a separate field for
+  // future divergence if constraint evaluation grows richer.
+  const resolvedConditions: Record<string, string> = { ...snapshot }
 
   // Deduplicate applied rules
   const uniqueAppliedRules = [...new Set(appliedRules)]

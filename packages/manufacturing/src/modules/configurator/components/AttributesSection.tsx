@@ -566,10 +566,10 @@ export default function AttributesSection({ productId }: { productId: string }) 
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(resolutionResult.resolvedConditions).map(([key, vals]) => (
+                      {Object.entries(resolutionResult.resolvedConditions).map(([key, val]) => (
                         <tr key={key} className="border-b last:border-0">
                           <td className="px-3 py-1.5"><code className="text-xs bg-muted px-1.5 py-0.5 rounded">{key}</code></td>
-                          <td className="px-3 py-1.5">{vals.join(', ')}</td>
+                          <td className="px-3 py-1.5">{val}</td>
                         </tr>
                       ))}
                       {Object.keys(resolutionResult.resolvedConditions).length === 0 && (

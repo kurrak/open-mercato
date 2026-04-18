@@ -78,7 +78,12 @@ export const openApi: OpenApiRouteDoc = {
   methods: {
     POST: {
       summary: 'Validate variant_condition keys against ConfigAttribute names',
-      description: 'Checks whether the keys in a variant_condition object match existing ConfigAttribute keys for the given product.',
+      description:
+        'Checks whether the keys in a variant_condition object match existing ConfigAttribute keys for the given product. ' +
+        'Also accepts single-key probes for BomLine product_resolve_key validation: pass ' +
+        '`{ productId, variantCondition: { [resolveKey]: null } }`. The endpoint treats it as any other namespace check — ' +
+        'response.unknownKeys will contain the resolve key if no ConfigAttribute with that name exists on the product. ' +
+        'Unknown keys are warnings, not errors (Graceful Incompleteness).',
       requestBody: { schema: validateNamespaceRequestSchema },
       responses: [
         { status: 200, description: 'Validation result', schema: validateNamespaceResponseSchema },

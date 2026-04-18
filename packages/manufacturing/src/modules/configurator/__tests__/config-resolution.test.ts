@@ -88,9 +88,9 @@ describe('resolveConfiguration', () => {
     expect(result.errors).toHaveLength(0)
     expect(result.warnings).toHaveLength(0)
     expect(result.resolvedConditions).toEqual({
-      seat_type: ['SD04'],
-      fabric: ['Soro_61'],
-      backrest: ['OP62'],
+      seat_type: 'SD04',
+      fabric: 'Soro_61',
+      backrest: 'OP62',
     })
     expect(result.resolvedSnapshot).toEqual({
       seat_type: 'SD04',
@@ -268,7 +268,7 @@ describe('resolveConfiguration', () => {
     )
 
     expect(result.resolvedSnapshot.leg).toBe('H2.5')
-    expect(result.resolvedConditions.leg).toEqual(['H2.5'])
+    expect(result.resolvedConditions.leg).toBe('H2.5')
     expect(result.warnings).toEqual(
       expect.arrayContaining([
         expect.stringContaining('changed "leg" from "H1" to "H2.5"'),
@@ -298,7 +298,7 @@ describe('resolveConfiguration', () => {
     )
 
     expect(result.resolvedSnapshot.finish).toBe('matte')
-    expect(result.resolvedConditions.finish).toEqual(['matte'])
+    expect(result.resolvedConditions.finish).toBe('matte')
   })
 
   it('should not override existing value with set_default', () => {
@@ -369,7 +369,7 @@ describe('resolveConfiguration', () => {
       }),
     )
 
-    expect(result.resolvedConditions).toEqual({ color: ['red'] })
+    expect(result.resolvedConditions).toEqual({ color: 'red' })
     expect(result.errors).toHaveLength(0)
     expect(result.warnings).toHaveLength(0)
     expect(result.appliedRules).toHaveLength(0)
@@ -547,7 +547,7 @@ describe('resolveConfiguration', () => {
   it('should handle no attributes and no rules', () => {
     const result = resolveConfiguration(makeInput({ configSnapshot: { foo: 'bar' } }))
 
-    expect(result.resolvedConditions).toEqual({ foo: ['bar'] })
+    expect(result.resolvedConditions).toEqual({ foo: 'bar' })
     expect(result.warnings).toContain('Unknown attribute key in snapshot: "foo"')
   })
 

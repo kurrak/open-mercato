@@ -72,4 +72,19 @@ describe('validateNamespace', () => {
     expect(result.unknownKeys).toEqual(expect.arrayContaining(['bad_key', 'another_bad']))
     expect(result.unknownKeys).toHaveLength(2)
   })
+
+  // BomLine.product_resolve_key validation probe: callers pass a single key with a
+  // null payload value ({ [resolveKey]: null }) to check whether it matches any
+  // ConfigAttribute on the product. See validate-namespace route openApi description.
+  it('should treat null-valued entries as namespace probes (product_resolve_key)', () => {
+    const attributes = [makeAttribute('tkanina')]
+
+    const known = validateNamespace({ tkanina: null }, attributes)
+    expect(known.valid).toBe(true)
+    expect(known.unknownKeys).toHaveLength(0)
+
+    const unknown = validateNamespace({ missing_key: null }, attributes)
+    expect(unknown.valid).toBe(false)
+    expect(unknown.unknownKeys).toEqual(['missing_key'])
+  })
 })

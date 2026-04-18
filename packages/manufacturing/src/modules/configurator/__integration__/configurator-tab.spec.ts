@@ -115,7 +115,7 @@ test.describe('D-UI-1: Empty state, Attribute CRUD — enum', () => {
 // D-UI-2: Create attribute of each type
 // ---------------------------------------------------------------------------
 
-test.describe('D-UI-2: All 5 attribute types', () => {
+test.describe('D-UI-2: All 6 attribute types', () => {
   test('create enum, numeric_range, boolean, text, product, product_variant → verify all in list', async ({ request }) => {
     let token: string | null = null
     let productId: string | null = null
@@ -221,14 +221,14 @@ test.describe('D-UI-3: Test Configuration resolve', () => {
       )
       expect(resolveResponse.ok(), `Resolve failed: ${resolveResponse.status()}`).toBeTruthy()
       const result = (await resolveResponse.json()) as {
-        resolvedConditions: Record<string, string[]>
+        resolvedConditions: Record<string, string>
         warnings: string[]
         errors: string[]
       }
 
       // Resolved conditions should contain the provided values
-      expect(result.resolvedConditions.seat_type).toEqual(['SD01N'])
-      expect(result.resolvedConditions.fabric).toEqual(['Soro_61'])
+      expect(result.resolvedConditions.seat_type).toBe('SD01N')
+      expect(result.resolvedConditions.fabric).toBe('Soro_61')
 
       // Warning for missing mandatory attribute
       expect(result.warnings.length).toBeGreaterThan(0)

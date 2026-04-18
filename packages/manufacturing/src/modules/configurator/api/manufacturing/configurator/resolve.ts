@@ -91,7 +91,7 @@ const resolveRequestSchema = z.object({
 })
 
 const resolveResponseSchema = z.object({
-  resolvedConditions: z.record(z.string(), z.array(z.string())),
+  resolvedConditions: z.record(z.string(), z.string()),
   resolvedSnapshot: z.record(z.string(), z.string()),
   errors: z.array(z.string()),
   warnings: z.array(z.string()),
