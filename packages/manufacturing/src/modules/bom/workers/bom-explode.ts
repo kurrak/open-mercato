@@ -37,7 +37,7 @@ type PreloadScope = { tenantId: string; organizationId: string }
 // collect UUIDs. The duplicate traversal is acceptable at this scope —
 // both passes hit the same rows through the same em, and the second pass
 // benefits from MikroORM's identity-map cache for PK lookups.
-async function buildExplosionContext(
+export async function buildExplosionContext(
   em: EntityManager,
   topBomHeaderId: string,
   variantConditions: Record<string, string>,
