@@ -5,7 +5,15 @@ import {
   createVariantFixture,
   deleteCatalogProductIfExists,
 } from '@open-mercato/core/helpers/integration/catalogFixtures'
-import { ensureTenantUom } from '../../product_master/__integration__/helpers/fixtures'
+import {
+  createExtensionFixture,
+  deleteExtensionIfExists,
+  ensureTenantUom,
+} from '../../product_master/__integration__/helpers/fixtures'
+import {
+  createConfigAttributeFixture,
+  deleteConfigAttributeIfExists,
+} from '../../configurator/__integration__/helpers/fixtures'
 import {
   createBomHeaderFixture,
   deleteBomHeaderIfExists,
@@ -18,16 +26,18 @@ import {
 } from './helpers/fixtures'
 
 // Static pinning + override pair propagation (spec b §Integration Tests
-// B-UI-12 + B-UI-16). Both are happy-path end-to-end tests:
+// B-UI-12 + B-UI-16 + the shape-2 override case).
 //
 // - B-UI-12 exercises the product_variant_id column on BomLine + the
 //   where-used query's 4-way match covering product_variant_id.
-// - B-UI-16 exercises the override-pair propagation — a matched
-//   BomLineVariant with (productOverrideId, productVariantOverrideId)
-//   overwrites both fields on the emitted ExplosionLine.
-//
-// D-UI-8 already covers the dynamic-resolution happy path; B-UI-16 here
-// covers the orthogonal case: static BomLine + override wins on match.
+// - B-UI-16 exercises override precedence + Step 2 warning suppression:
+//   a dynamic BomLine whose Step 2 resolution deliberately fails, plus a
+//   matched BomLineVariant with the full override pair — the override
+//   wins AND Step 2's queued warning is discarded rather than leaked to
+//   the caller.
+// - The final test covers override shape (2) — `productOverrideId`-only
+//   resets `productVariantId` to null even when the static line had one
+//   pinned.
 
 function makeSuffix(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -119,14 +129,23 @@ test.describe('B-UI-12: static BomLine pins product_variant_id + where-used cove
 })
 
 // ---------------------------------------------------------------------------
-// B-UI-16 — BomLineVariant override pair wins over the static BomLine product
+// B-UI-16 — Override precedence + Step 2 warning suppression
 // ---------------------------------------------------------------------------
+//
+// Spec b §Integration Tests B-UI-16 (override wins over a failed dynamic
+// resolve + the queued Step 2 warning is discarded). The dynamic BomLine
+// carries `product_resolve_key='fabric'`; `variantConditions` deliberately
+// omits 'fabric', so Step 2 queues a "resolve key 'fabric' missing …"
+// warning on the line. A matched BomLineVariant with the full override
+// pair then fills `productId` + `productVariantId`; the spec requires the
+// queued warning to be **discarded**, not leaked to the caller.
 
-test.describe('B-UI-16: BomLineVariant override pair propagates (productId + productVariantId) on match', () => {
-  test('matched override replaces both productId AND productVariantId on the ExplosionLine', async ({ request }) => {
+test.describe('B-UI-16: override precedence + Step 2 warning suppression on dynamic line', () => {
+  test('override fills productId+productVariantId AND Step 2 warning is discarded', async ({ request }) => {
     let token: string | null = null
     let masterId: string | null = null
-    let staticProductId: string | null = null
+    let extensionId: string | null = null
+    let attributeId: string | null = null
     let overrideProductId: string | null = null
     // Holds the variant UUID — cleanup is via overrideProductId cascade-delete.
     let overrideVariantId: string | null = null
@@ -142,10 +161,26 @@ test.describe('B-UI-16: BomLineVariant override pair propagates (productId + pro
         title: `QA Override Master ${suffix}`,
         sku: `QA-OVR-MASTER-${suffix}`,
       })
-      staticProductId = await createProductFixture(request, token, {
-        title: `QA Override Static ${suffix}`,
-        sku: `QA-OVR-STATIC-${suffix}`,
+      // rule_based master is required for the ConfigAttribute to be a
+      // legitimate resolve target — matches the setup in D-UI-9/10.
+      const extension = await createExtensionFixture(request, token, {
+        productId: masterId,
+        baseUomId: uom.id,
+        procurementType: 'make',
+        configurationType: 'rule_based',
       })
+      extensionId = extension.id
+
+      const attr = await createConfigAttributeFixture(request, token, {
+        productId: masterId,
+        key: 'fabric',
+        label: 'Fabric',
+        attributeType: 'product_variant',
+        isMandatory: true,
+        displayOrder: 0,
+      })
+      attributeId = attr.id
+
       overrideProductId = await createProductFixture(request, token, {
         title: `QA Override Target ${suffix}`,
         sku: `QA-OVR-TARGET-${suffix}`,
@@ -162,18 +197,21 @@ test.describe('B-UI-16: BomLineVariant override pair propagates (productId + pro
       })
       bomHeaderId = bomHeader.id
 
-      // Static BomLine — this is what explosion would emit without an
-      // override match.
+      // Dynamic BomLine — no static productId, resolve-key mode. Step 2 will
+      // need 'fabric' in variantConditions to resolve; the explode call below
+      // deliberately omits it.
       const bomLine = await createBomLineFixture(request, token, {
         bomHeaderId: bomHeader.id,
-        productId: staticProductId,
+        productResolveKey: 'fabric',
         netQuantity: 2,
         uomId: uom.id,
       })
       bomLineId = bomLine.id
 
-      // Override: when variantConditions has grade=premium, switch to
-      // (overrideProductId, overrideVariantId).
+      // Override triggers on an orthogonal key (grade=premium) so we can
+      // fire it without supplying 'fabric'. When matched, it fills both
+      // (productId, productVariantId) — which per spec discards the queued
+      // Step 2 warning.
       const bomLineVariant = await createBomLineVariantFixture(request, token, {
         bomLineId: bomLine.id,
         variantCondition: { grade: ['premium'] },
@@ -182,6 +220,9 @@ test.describe('B-UI-16: BomLineVariant override pair propagates (productId + pro
       })
       bomLineVariantId = bomLineVariant.id
 
+      // Override path: grade=premium triggers the BomLineVariant; 'fabric'
+      // is intentionally missing → Step 2 queues a warning → Step 3 fills
+      // the pair → the queued warning is discarded.
       const result = await explodeBomAndWait(request, token, {
         bomHeaderId: bomHeader.id,
         variantConditions: { grade: 'premium' },
@@ -190,29 +231,43 @@ test.describe('B-UI-16: BomLineVariant override pair propagates (productId + pro
       expect(result.lines).toHaveLength(1)
       const line = result.lines[0]
       expect(line.bomLineId).toBe(bomLine.id)
-      // Override wins on both fields — neither staticProductId nor null
-      // variant carried through.
+      // Override's pair is on the output even though Step 2 failed.
       expect(line.productId).toBe(overrideProductId)
       expect(line.productVariantId).toBe(overrideVariantId)
       expect(line.quantity).toBe(2)
-      expect(result.warnings.filter((w) => w.bomLineId === bomLine.id)).toHaveLength(0)
 
-      // Sanity: with a non-matching snapshot, the static BomLine flows
-      // through unchanged — confirms the override only fires on match.
-      const noMatch = await explodeBomAndWait(request, token, {
+      // Spec contract: Step 2's queued "resolve key 'fabric' missing …"
+      // warning MUST NOT leak into result.warnings[] when Step 3 rescues
+      // the line. Assert neither the 'fabric' string nor the generic
+      // "resolve key" phrase appears for this bomLineId. Also assert
+      // the emit-on-null "emitted with null product_id" downstream-contract
+      // warning is absent (productId is non-null on the output).
+      const lineWarnings = result.warnings.filter((w) => w.bomLineId === bomLine.id)
+      expect(lineWarnings, `Unexpected warnings: ${JSON.stringify(lineWarnings)}`).toHaveLength(0)
+
+      // Control: without the override trigger, Step 2 warning DOES surface
+      // — proves the queued warning really was queued and only the override
+      // path suppresses it.
+      const uncovered = await explodeBomAndWait(request, token, {
         bomHeaderId: bomHeader.id,
         variantConditions: { grade: 'economy' },
       })
-      expect(noMatch.lines).toHaveLength(1)
-      expect(noMatch.lines[0].productId).toBe(staticProductId)
-      expect(noMatch.lines[0].productVariantId).toBeNull()
+      expect(uncovered.lines).toHaveLength(1)
+      const uncoveredLine = uncovered.lines[0]
+      expect(uncoveredLine.productId).toBeNull()
+      const uncoveredWarnings = uncovered.warnings.filter((w) => w.bomLineId === bomLine.id)
+      expect(
+        uncoveredWarnings.some((w) => w.message.includes("resolve key 'fabric'")),
+        'Step 2 should queue a warning when override does not rescue the line',
+      ).toBe(true)
     } finally {
       await deleteBomLineVariantIfExists(request, token, bomLineVariantId)
       await deleteBomLineIfExists(request, token, bomLineId)
       await deleteBomHeaderIfExists(request, token, bomHeaderId)
+      await deleteConfigAttributeIfExists(request, token, attributeId)
+      await deleteExtensionIfExists(request, token, extensionId)
       // overrideVariantId cascades with overrideProductId.
       await deleteCatalogProductIfExists(request, token, overrideProductId)
-      await deleteCatalogProductIfExists(request, token, staticProductId)
       await deleteCatalogProductIfExists(request, token, masterId)
     }
   })
