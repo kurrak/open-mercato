@@ -13,12 +13,14 @@ import {
 import {
   createConfigAttributeFixture,
   deleteConfigAttributeIfExists,
+} from './helpers/fixtures'
+import {
   createBomHeaderFixture,
   deleteBomHeaderIfExists,
   createBomLineFixture,
   deleteBomLineIfExists,
   explodeBomAndWait,
-} from './helpers/fixtures'
+} from '../../bom/__integration__/helpers/fixtures'
 
 // ---------------------------------------------------------------------------
 // Shared setup — rule_based master product for dynamic resolution scenarios

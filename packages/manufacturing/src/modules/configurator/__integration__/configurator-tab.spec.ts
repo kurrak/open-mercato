@@ -13,11 +13,13 @@ import {
   createConfigAttributeFixture,
   deleteConfigAttributeIfExists,
   listConfigAttributes,
+} from './helpers/fixtures'
+import {
   createBomHeaderFixture,
   deleteBomHeaderIfExists,
   createBomLineFixture,
   deleteBomLineIfExists,
-} from './helpers/fixtures'
+} from '../../bom/__integration__/helpers/fixtures'
 
 // ---------------------------------------------------------------------------
 // Shared setup: product + extension with rule_based configuration
