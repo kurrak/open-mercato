@@ -50,7 +50,14 @@ function groupAttributes(attributes: ConfigAttributeRow[]): GroupedAttributes[] 
   return result
 }
 
-type MaterialOption = { id: string; title: string }
+type CatalogOption = { id: string; label: string }
+
+type VariantListItem = {
+  id?: string
+  product_id?: string
+  name?: string | null
+  sku?: string | null
+}
 
 export default function ConfigurationForm({
   productId,
@@ -62,10 +69,14 @@ export default function ConfigurationForm({
   const [attributes, setAttributes] = React.useState<ConfigAttributeRow[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [values, setValues] = React.useState<Record<string, unknown>>({})
-  const [materialOptions, setMaterialOptions] = React.useState<Record<string, MaterialOption[]>>({})
-  const [materialLoading, setMaterialLoading] = React.useState<Record<string, boolean>>({})
+  const [productOptions, setProductOptions] = React.useState<Record<string, CatalogOption[]>>({})
+  const [productLoading, setProductLoading] = React.useState<Record<string, boolean>>({})
+  // For product_variant attributes only: which product is currently picked (step 1).
+  // UI-only — not emitted in the submitted snapshot.
+  const [productSelections, setProductSelections] = React.useState<Record<string, string>>({})
+  const [variantOptions, setVariantOptions] = React.useState<Record<string, CatalogOption[]>>({})
+  const [variantLoading, setVariantLoading] = React.useState<Record<string, boolean>>({})
 
-  // Load config attributes for the product
   React.useEffect(() => {
     if (!productId) return
     let cancelled = false
@@ -105,43 +116,148 @@ export default function ConfigurationForm({
     return () => { cancelled = true }
   }, [productId])
 
-  // Load material options for material-type attributes
+  // Step 1: load product options for each 'product' / 'product_variant' attribute
+  // scoped by product_filter_id. Shared across both branches.
   React.useEffect(() => {
-    const materialAttrs = attributes.filter(
-      (a) => a.attribute_type === 'material' && a.material_filter_id,
+    const dynamicAttrs = attributes.filter(
+      (a) =>
+        (a.attribute_type === 'product' || a.attribute_type === 'product_variant') &&
+        a.product_filter_id,
     )
-    if (materialAttrs.length === 0) return
+    if (dynamicAttrs.length === 0) return
 
     let cancelled = false
-    for (const attr of materialAttrs) {
-      const categoryId = attr.material_filter_id as string
-      setMaterialLoading((prev) => ({ ...prev, [attr.key]: true }))
-      readApiResultOrThrow<{ items?: Array<{ id: string; title: string }> }>(
+    for (const attr of dynamicAttrs) {
+      const categoryId = attr.product_filter_id as string
+      setProductLoading((prev) => ({ ...prev, [attr.key]: true }))
+      readApiResultOrThrow<{ items?: Array<{ id: string; title?: string; name?: string; sku?: string }> }>(
         `/api/catalog/products?categoryIds=${encodeURIComponent(categoryId)}&pageSize=100&isActive=true`,
         undefined,
         { errorMessage: '' },
       )
         .then((data) => {
           if (cancelled) return
-          setMaterialOptions((prev) => ({
+          setProductOptions((prev) => ({
             ...prev,
-            [attr.key]: (data?.items ?? []).map((p) => ({ id: p.id, title: p.title })),
+            [attr.key]: (data?.items ?? []).map((item) => ({
+              id: item.id,
+              label: item.title ?? item.name ?? item.sku ?? item.id,
+            })),
           }))
         })
         .catch((err) => {
           if (cancelled) return
-          console.warn(`[configurator] failed to load materials for ${attr.key}`, err)
-          setMaterialOptions((prev) => ({ ...prev, [attr.key]: [] }))
+          console.warn(`[configurator] failed to load product options for ${attr.key}`, err)
+          setProductOptions((prev) => ({ ...prev, [attr.key]: [] }))
         })
         .finally(() => {
-          if (!cancelled) setMaterialLoading((prev) => ({ ...prev, [attr.key]: false }))
+          if (!cancelled) setProductLoading((prev) => ({ ...prev, [attr.key]: false }))
         })
     }
     return () => { cancelled = true }
   }, [attributes])
 
+  // Hydration: for 'product_variant' attributes pre-filled from default_value
+  // (snapshot holds only the variant UUID), recover the owning product UUID
+  // so step 1 of the two-step picker can display it.
+  React.useEffect(() => {
+    const needsHydration = attributes.filter((a) => {
+      if (a.attribute_type !== 'product_variant') return false
+      const current = values[a.key]
+      return typeof current === 'string' && current.length > 0 && !productSelections[a.key]
+    })
+    if (needsHydration.length === 0) return
+
+    let cancelled = false
+    for (const attr of needsHydration) {
+      const variantId = values[attr.key] as string
+      readApiResultOrThrow<{ items?: VariantListItem[] }>(
+        `/api/catalog/variants?id=${encodeURIComponent(variantId)}&pageSize=1`,
+        undefined,
+        { errorMessage: '' },
+      )
+        .then((data) => {
+          if (cancelled) return
+          const ownerId = data?.items?.[0]?.product_id
+          if (ownerId) {
+            setProductSelections((prev) => ({ ...prev, [attr.key]: ownerId }))
+          }
+        })
+        .catch((err) => {
+          // Non-fatal: hydration failure leaves step 1 unselected, user can re-pick.
+          console.warn(`[configurator] failed to hydrate product for variant ${variantId}`, err)
+        })
+    }
+    return () => { cancelled = true }
+  }, [attributes, values, productSelections])
+
+  // Step 2: load variant options for any 'product_variant' attribute whose
+  // step-1 product has been picked (directly by the user, or via hydration).
+  React.useEffect(() => {
+    const pendingFetches = attributes.filter(
+      (a) =>
+        a.attribute_type === 'product_variant' &&
+        typeof productSelections[a.key] === 'string' &&
+        productSelections[a.key].length > 0 &&
+        variantOptions[a.key] === undefined,
+    )
+    if (pendingFetches.length === 0) return
+
+    let cancelled = false
+    for (const attr of pendingFetches) {
+      const pickedProductId = productSelections[attr.key]
+      setVariantLoading((prev) => ({ ...prev, [attr.key]: true }))
+      readApiResultOrThrow<{ items?: VariantListItem[] }>(
+        `/api/catalog/variants?productId=${encodeURIComponent(pickedProductId)}&pageSize=100&isActive=true`,
+        undefined,
+        { errorMessage: '' },
+      )
+        .then((data) => {
+          if (cancelled) return
+          setVariantOptions((prev) => ({
+            ...prev,
+            [attr.key]: (data?.items ?? []).map((item) => ({
+              id: item.id as string,
+              label: item.name ?? item.sku ?? (item.id as string),
+            })),
+          }))
+        })
+        .catch((err) => {
+          if (cancelled) return
+          console.warn(`[configurator] failed to load variants for ${attr.key}`, err)
+          setVariantOptions((prev) => ({ ...prev, [attr.key]: [] }))
+        })
+        .finally(() => {
+          if (!cancelled) setVariantLoading((prev) => ({ ...prev, [attr.key]: false }))
+        })
+    }
+    return () => { cancelled = true }
+  }, [attributes, productSelections, variantOptions])
+
   const setValue = React.useCallback((key: string, value: unknown) => {
     setValues((prev) => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleProductPick = React.useCallback((key: string, pickedProductId: string | undefined) => {
+    setProductSelections((prev) => {
+      const next = { ...prev }
+      if (pickedProductId) next[key] = pickedProductId
+      else delete next[key]
+      return next
+    })
+    // Picking a new product invalidates the current variant choice + any cached variant list.
+    setValues((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+    setVariantOptions((prev) => {
+      if (!(key in prev)) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
   }, [])
 
   const handleSubmit = React.useCallback(
@@ -176,6 +292,23 @@ export default function ConfigurationForm({
 
   const groups = groupAttributes(attributes)
 
+  const renderField = (attr: ConfigAttributeRow) => (
+    <AttributeField
+      key={attr.key}
+      attribute={attr}
+      value={values[attr.key]}
+      onChange={(v) => setValue(attr.key, v)}
+      pickedProductId={productSelections[attr.key]}
+      onProductPick={(v) => handleProductPick(attr.key, v)}
+      productOptions={productOptions[attr.key]}
+      productLoading={productLoading[attr.key] ?? false}
+      variantOptions={variantOptions[attr.key]}
+      variantLoading={variantLoading[attr.key] ?? false}
+      disabled={disabled}
+      t={t}
+    />
+  )
+
   return (
     <form onSubmit={handleSubmit} onKeyDown={handleKeyDown} className="space-y-6">
       {groups.map((group) =>
@@ -187,33 +320,11 @@ export default function ConfigurationForm({
             <legend className="px-2 text-sm font-medium text-muted-foreground">
               {group.group}
             </legend>
-            {group.attributes.map((attr) => (
-              <AttributeField
-                key={attr.key}
-                attribute={attr}
-                value={values[attr.key]}
-                onChange={(v) => setValue(attr.key, v)}
-                disabled={disabled}
-                materialOptions={materialOptions[attr.key]}
-                materialLoading={materialLoading[attr.key] ?? false}
-                t={t}
-              />
-            ))}
+            {group.attributes.map(renderField)}
           </fieldset>
         ) : (
           <div key="__ungrouped" className="space-y-3">
-            {group.attributes.map((attr) => (
-              <AttributeField
-                key={attr.key}
-                attribute={attr}
-                value={values[attr.key]}
-                onChange={(v) => setValue(attr.key, v)}
-                disabled={disabled}
-                materialOptions={materialOptions[attr.key]}
-                materialLoading={materialLoading[attr.key] ?? false}
-                t={t}
-              />
-            ))}
+            {group.attributes.map(renderField)}
           </div>
         ),
       )}
@@ -235,9 +346,13 @@ type AttributeFieldProps = {
   attribute: ConfigAttributeRow
   value: unknown
   onChange: (value: unknown) => void
+  pickedProductId?: string
+  onProductPick: (productId: string | undefined) => void
+  productOptions?: CatalogOption[]
+  productLoading: boolean
+  variantOptions?: CatalogOption[]
+  variantLoading: boolean
   disabled: boolean
-  materialOptions?: MaterialOption[]
-  materialLoading: boolean
   t: (key: string, fallback?: string) => string
 }
 
@@ -248,9 +363,13 @@ function AttributeField({
   attribute,
   value,
   onChange,
+  pickedProductId,
+  onProductPick,
+  productOptions,
+  productLoading,
+  variantOptions,
+  variantLoading,
   disabled,
-  materialOptions,
-  materialLoading,
   t,
 }: AttributeFieldProps) {
   const fieldId = `config-${attribute.key}`
@@ -316,24 +435,79 @@ function AttributeField({
         />
       )}
 
-      {attribute.attribute_type === 'material' && (
-        materialLoading ? (
+      {attribute.attribute_type === 'product' && (
+        productLoading ? (
           <select id={fieldId} className={selectClassName} disabled>
             <option>{t('manufacturing.common.loading', 'Loading...')}</option>
           </select>
-        ) : materialOptions && materialOptions.length > 0 ? (
+        ) : productOptions && productOptions.length > 0 ? (
           <ComboboxInput
             value={(value as string) ?? ''}
             onChange={(v) => onChange(v || undefined)}
-            placeholder={t('configurator.configForm.materialPlaceholder', 'Search materials...')}
-            suggestions={materialOptions.map((p) => ({ value: p.id, label: p.title }))}
+            placeholder={t('configurator.configForm.productPlaceholder', 'Search products...')}
+            suggestions={productOptions.map((p) => ({ value: p.id, label: p.label }))}
             disabled={disabled}
           />
         ) : (
           <div className="text-sm text-muted-foreground py-2">
-            {t('configurator.configForm.noMaterials', 'No materials available — check category configuration')}
+            {t('configurator.configForm.noProducts', 'No products available — check category configuration')}
           </div>
         )
+      )}
+
+      {attribute.attribute_type === 'product_variant' && (
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <span className="text-xs text-muted-foreground">
+              {t('configurator.configForm.productStepLabel', 'Product')}
+            </span>
+            {productLoading ? (
+              <select className={selectClassName} disabled>
+                <option>{t('manufacturing.common.loading', 'Loading...')}</option>
+              </select>
+            ) : productOptions && productOptions.length > 0 ? (
+              <ComboboxInput
+                value={pickedProductId ?? ''}
+                onChange={(v) => onProductPick(v || undefined)}
+                placeholder={t('configurator.configForm.productPlaceholder', 'Search products...')}
+                suggestions={productOptions.map((p) => ({ value: p.id, label: p.label }))}
+                disabled={disabled}
+              />
+            ) : (
+              <div className="text-sm text-muted-foreground py-2">
+                {t('configurator.configForm.noProducts', 'No products available — check category configuration')}
+              </div>
+            )}
+          </div>
+
+          {pickedProductId && (
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">
+                {t('configurator.configForm.variantStepLabel', 'Variant')}
+              </span>
+              {variantLoading ? (
+                <select className={selectClassName} disabled>
+                  <option>{t('manufacturing.common.loading', 'Loading...')}</option>
+                </select>
+              ) : variantOptions && variantOptions.length > 0 ? (
+                <ComboboxInput
+                  value={(value as string) ?? ''}
+                  onChange={(v) => onChange(v || undefined)}
+                  placeholder={t('configurator.configForm.productVariantPlaceholder', 'Search product variants...')}
+                  suggestions={variantOptions.map((v) => ({ value: v.id, label: v.label }))}
+                  disabled={disabled}
+                />
+              ) : (
+                <div className="text-sm text-muted-foreground py-2">
+                  {t(
+                    'configurator.configForm.noVariantsForProduct',
+                    'No variants on the selected product — pick a different product',
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

@@ -11,7 +11,7 @@ function makeAttribute(key: string): ConfigAttribute {
     label: key,
     attributeType: 'enum' as AttributeType,
     allowedValues: null,
-    materialFilterId: null,
+    productFilterId: null,
     isMandatory: true,
     displayOrder: 0,
     defaultValue: null,

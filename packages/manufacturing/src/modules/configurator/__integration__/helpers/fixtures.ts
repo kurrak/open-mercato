@@ -16,7 +16,7 @@ export async function createConfigAttributeFixture(
     label: string
     attributeType?: string
     allowedValues?: unknown
-    materialFilterId?: string | null
+    productFilterId?: string | null
     isMandatory?: boolean
     displayOrder?: number
     attributeGroup?: string | null
@@ -34,7 +34,7 @@ export async function createConfigAttributeFixture(
         label: input.label,
         attributeType: input.attributeType ?? 'enum',
         allowedValues: input.allowedValues ?? null,
-        materialFilterId: input.materialFilterId ?? null,
+        productFilterId: input.productFilterId ?? null,
         isMandatory: input.isMandatory ?? true,
         displayOrder: input.displayOrder ?? 0,
         attributeGroup: input.attributeGroup ?? null,

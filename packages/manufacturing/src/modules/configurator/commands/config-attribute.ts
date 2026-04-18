@@ -34,7 +34,7 @@ type ConfigAttributeSnapshot = {
   label: string
   attributeType: string
   allowedValues: unknown | null
-  materialFilterId: string | null
+  productFilterId: string | null
   isMandatory: boolean
   displayOrder: number
   defaultValue: string | null
@@ -54,7 +54,7 @@ function snapshotConfigAttribute(record: ConfigAttribute): ConfigAttributeSnapsh
     label: record.label,
     attributeType: record.attributeType,
     allowedValues: record.allowedValues ?? null,
-    materialFilterId: record.materialFilterId ?? null,
+    productFilterId: record.productFilterId ?? null,
     isMandatory: record.isMandatory,
     displayOrder: record.displayOrder,
     defaultValue: record.defaultValue ?? null,
@@ -77,7 +77,7 @@ const createConfigAttributeCommand: CommandHandler<ConfigAttributeCreateInput, {
       label: parsed.label,
       attributeType: parsed.attributeType ?? 'enum',
       allowedValues: parsed.allowedValues ?? null,
-      materialFilterId: parsed.materialFilterId ?? null,
+      productFilterId: parsed.productFilterId ?? null,
       isMandatory: parsed.isMandatory ?? true,
       displayOrder: parsed.displayOrder ?? 0,
       defaultValue: parsed.defaultValue ?? null,
@@ -151,7 +151,7 @@ const updateConfigAttributeCommand: CommandHandler<ConfigAttributeUpdateInput, {
     }
 
     const allChanges = buildChanges(record as unknown as Record<string, unknown>, parsed, [
-      'key', 'label', 'attributeType', 'allowedValues', 'materialFilterId',
+      'key', 'label', 'attributeType', 'allowedValues', 'productFilterId',
       'isMandatory', 'displayOrder', 'defaultValue', 'attributeGroup', 'isActive',
     ])
     const changes = Object.fromEntries(
@@ -215,7 +215,7 @@ const updateConfigAttributeCommand: CommandHandler<ConfigAttributeUpdateInput, {
       label: before.label,
       attributeType: before.attributeType,
       allowedValues: before.allowedValues,
-      materialFilterId: before.materialFilterId,
+      productFilterId: before.productFilterId,
       isMandatory: before.isMandatory,
       displayOrder: before.displayOrder,
       defaultValue: before.defaultValue,

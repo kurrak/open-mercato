@@ -19,7 +19,7 @@ function makeAttribute(overrides: Partial<ConfigAttribute> & { key: string }): C
     label: overrides.key,
     attributeType: 'enum' as AttributeType,
     allowedValues: null,
-    materialFilterId: null,
+    productFilterId: null,
     isMandatory: true,
     displayOrder: 0,
     defaultValue: null,
@@ -377,18 +377,18 @@ describe('resolveConfiguration', () => {
 
   it('should respect priority ordering (higher priority fires first)', () => {
     const attributes = [
-      makeAttribute({ key: 'material' }),
+      makeAttribute({ key: 'wood_type' }),
       makeAttribute({ key: 'finish' }),
     ]
     const rules = [
       makeRule({
-        conditionJson: { material: ['wood'] },
+        conditionJson: { wood_type: ['oak'] },
         actionType: 'require_value',
         actionData: { finish: 'low_priority_value' },
         priority: 1,
       }),
       makeRule({
-        conditionJson: { material: ['wood'] },
+        conditionJson: { wood_type: ['oak'] },
         actionType: 'require_value',
         actionData: { finish: 'high_priority_value' },
         priority: 10,
@@ -397,7 +397,7 @@ describe('resolveConfiguration', () => {
 
     const result = resolveConfiguration(
       makeInput({
-        configSnapshot: { material: 'wood' },
+        configSnapshot: { wood_type: 'oak' },
         attributes,
         rules,
       }),

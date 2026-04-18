@@ -11,7 +11,7 @@ import {
 // ConfigAttribute
 // ---------------------------------------------------------------------------
 
-export type AttributeType = 'enum' | 'numeric_range' | 'boolean' | 'text' | 'material'
+export type AttributeType = 'enum' | 'numeric_range' | 'boolean' | 'text' | 'product' | 'product_variant'
 
 @Entity({ tableName: 'manufacturing_config_attributes' })
 @Index({ name: 'manufacturing_ca_org_tenant_idx', properties: ['organizationId', 'tenantId'] })
@@ -44,8 +44,8 @@ export class ConfigAttribute {
   @Property({ name: 'allowed_values', type: 'jsonb', nullable: true })
   allowedValues?: unknown | null
 
-  @Property({ name: 'material_filter_id', type: 'uuid', nullable: true })
-  materialFilterId?: string | null
+  @Property({ name: 'product_filter_id', type: 'uuid', nullable: true })
+  productFilterId?: string | null
 
   @Property({ name: 'is_mandatory', type: 'boolean', default: true })
   isMandatory: boolean = true

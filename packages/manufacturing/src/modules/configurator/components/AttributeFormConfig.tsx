@@ -18,7 +18,7 @@ export type AttributeFormValues = {
   numericMin: string
   numericMax: string
   numericStep: string
-  materialFilterId: string
+  productFilterId: string
   isMandatory: boolean
   displayOrder: number
   defaultValue: string
@@ -32,7 +32,7 @@ export type ConfigAttributeRow = {
   label: string
   attribute_type: string
   allowed_values: unknown
-  material_filter_id: string | null
+  product_filter_id: string | null
   is_mandatory: boolean
   display_order: number
   default_value: string | null
@@ -51,7 +51,7 @@ export const ATTRIBUTE_DEFAULT_VALUES: AttributeFormValues = {
   numericMin: '',
   numericMax: '',
   numericStep: '',
-  materialFilterId: '',
+  productFilterId: '',
   isMandatory: true,
   displayOrder: 0,
   defaultValue: '',
@@ -89,7 +89,7 @@ export function attributeRecordToFormValues(record: ConfigAttributeRow): Attribu
     numericMin,
     numericMax,
     numericStep,
-    materialFilterId: record.material_filter_id ?? '',
+    productFilterId: record.product_filter_id ?? '',
     isMandatory: record.is_mandatory ?? true,
     displayOrder: record.display_order ?? 0,
     defaultValue: record.default_value ?? '',
@@ -159,9 +159,10 @@ function buildPayload(
     label,
     attributeType,
     allowedValues,
-    materialFilterId: attributeType === 'material' && values.materialFilterId?.trim()
-      ? values.materialFilterId.trim()
-      : null,
+    productFilterId:
+      (attributeType === 'product' || attributeType === 'product_variant') && values.productFilterId?.trim()
+        ? values.productFilterId.trim()
+        : null,
     isMandatory: values.isMandatory !== false,
     displayOrder: Number.isFinite(Number(values.displayOrder)) ? Number(values.displayOrder) : 0,
     defaultValue: values.defaultValue?.trim() || null,
@@ -195,7 +196,7 @@ export async function submitAttributeUpdate(
   await updateCrud('configurator/manufacturing/config-attribute', { id: attributeId, ...payload })
 }
 
-const ATTRIBUTE_TYPES = ['enum', 'numeric_range', 'boolean', 'text', 'material'] as const
+const ATTRIBUTE_TYPES = ['enum', 'numeric_range', 'boolean', 'text', 'product', 'product_variant'] as const
 
 export function buildAttributeFormFields(
   t: Translator,
@@ -354,15 +355,18 @@ export function buildAttributeFormFields(
     )
   }
 
-  if (currentType === 'material') {
+  if (currentType === 'product' || currentType === 'product_variant') {
     fields.push({
-      id: 'materialFilterId',
-      label: t('configurator.attributes.form.field.materialFilter', 'Material Category'),
+      id: 'productFilterId',
+      label: t('configurator.attributes.form.field.productFilter', 'Product Category'),
       type: 'combobox',
-      placeholder: t('configurator.attributes.form.field.materialFilterPlaceholder', 'Select a product category'),
+      placeholder: t('configurator.attributes.form.field.productFilterPlaceholder', 'Select a product category'),
       description: (
         <span className="flex items-center gap-1">
-          {t('configurator.attributes.form.field.materialFilterHelp', 'Filter which products appear in the configurator.')}
+          {t(
+            'configurator.attributes.form.field.productFilterHelp',
+            'Filter which products or variants appear in the configurator.',
+          )}
           {' '}
           <Link
             href="/backend/catalog/categories"
@@ -399,7 +403,7 @@ export function buildAttributeFormGroups(t: Translator, currentType: string): Cr
   const typeSpecificFields: string[] = ['attributeType']
   if (currentType === 'enum') typeSpecificFields.push('allowedValues')
   if (currentType === 'numeric_range') typeSpecificFields.push('numericMin', 'numericMax', 'numericStep')
-  if (currentType === 'material') typeSpecificFields.push('materialFilterId')
+  if (currentType === 'product' || currentType === 'product_variant') typeSpecificFields.push('productFilterId')
 
   return [
     {

@@ -77,18 +77,22 @@ export default function AttributesSection({ productId }: { productId: string }) 
     errorMessage: t('manufacturing.common.error', 'An error occurred'),
   })
 
-  // --- Category name map for material-type attributes ---
+  // --- Category name map for product / product_variant attributes ---
 
   const [categoryMap, setCategoryMap] = React.useState<Record<string, string>>({})
 
   React.useEffect(() => {
-    const materialIds = rows
-      .filter((r) => r.attribute_type === 'material' && r.material_filter_id)
-      .map((r) => r.material_filter_id as string)
-    if (materialIds.length === 0) return
+    const filterIds = rows
+      .filter(
+        (r) =>
+          (r.attribute_type === 'product' || r.attribute_type === 'product_variant') &&
+          r.product_filter_id,
+      )
+      .map((r) => r.product_filter_id as string)
+    if (filterIds.length === 0) return
     let cancelled = false
     readApiResultOrThrow<{ items?: Array<{ id: string; name: string }> }>(
-      `/api/catalog/categories?ids=${encodeURIComponent(materialIds.join(','))}&pageSize=100`,
+      `/api/catalog/categories?ids=${encodeURIComponent(filterIds.join(','))}&pageSize=100`,
       undefined,
       { errorMessage: '' },
     )
@@ -99,7 +103,7 @@ export default function AttributesSection({ productId }: { productId: string }) 
         setCategoryMap(map)
       })
       .catch((err) => {
-        // Non-fatal: material column falls back to "No category selected"
+        // Non-fatal: Values column falls back to "No category selected" for affected rows.
         console.warn('[configurator] failed to load category names', err)
       })
     return () => { cancelled = true }
@@ -304,8 +308,9 @@ export default function AttributesSection({ productId }: { productId: string }) 
           return <span className="text-sm">{t('configurator.attributes.table.yesNo', 'Yes / No')}</span>
         case 'text':
           return <span className="text-sm text-muted-foreground">{t('configurator.attributes.table.freeText', 'Free text')}</span>
-        case 'material': {
-          const filterId = row.material_filter_id
+        case 'product':
+        case 'product_variant': {
+          const filterId = row.product_filter_id
           if (!filterId) {
             return <span className="text-sm text-muted-foreground">{t('configurator.attributes.table.noCategorySelected', 'No category selected')}</span>
           }

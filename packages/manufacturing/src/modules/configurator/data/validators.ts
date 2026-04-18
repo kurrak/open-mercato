@@ -7,7 +7,7 @@ const scopedSchema = z.object({
   tenantId: uuid(),
 })
 
-const attributeTypes = ['enum', 'numeric_range', 'boolean', 'text', 'material'] as const
+const attributeTypes = ['enum', 'numeric_range', 'boolean', 'text', 'product', 'product_variant'] as const
 const actionTypes = ['restrict_values', 'exclude_combination', 'require_value', 'set_default'] as const
 
 const variantConditionSchema = z.record(
@@ -30,7 +30,7 @@ export const configAttributeCreateSchema = scopedSchema.extend({
   label: z.string().trim().min(1).max(255),
   attributeType: z.enum(attributeTypes).default('enum'),
   allowedValues: z.unknown().nullable().optional(),
-  materialFilterId: uuid().nullable().optional(),
+  productFilterId: uuid().nullable().optional(),
   isMandatory: z.boolean().optional(),
   displayOrder: z.number().int().min(0).optional(),
   defaultValue: z.string().max(255).nullable().optional(),
@@ -47,7 +47,7 @@ export const configAttributeUpdateSchema = z.object({ id: uuid() }).merge(
       label: z.string().trim().min(1).max(255),
       attributeType: z.enum(attributeTypes),
       allowedValues: z.unknown().nullable(),
-      materialFilterId: uuid().nullable(),
+      productFilterId: uuid().nullable(),
       isMandatory: z.boolean(),
       displayOrder: z.number().int().min(0),
       defaultValue: z.string().max(255).nullable(),

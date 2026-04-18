@@ -44,7 +44,7 @@ describe('configAttributeCreateSchema', () => {
   })
 
   it('should accept all valid attribute types', () => {
-    for (const attributeType of ['enum', 'numeric_range', 'boolean', 'text', 'material']) {
+    for (const attributeType of ['enum', 'numeric_range', 'boolean', 'text', 'product', 'product_variant']) {
       const result = configAttributeCreateSchema.safeParse({
         ...validScope,
         productId: validProductId,

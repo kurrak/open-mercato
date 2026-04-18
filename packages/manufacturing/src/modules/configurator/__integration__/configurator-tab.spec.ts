@@ -116,7 +116,7 @@ test.describe('D-UI-1: Empty state, Attribute CRUD — enum', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('D-UI-2: All 5 attribute types', () => {
-  test('create enum, numeric_range, boolean, text, material → verify all in list', async ({ request }) => {
+  test('create enum, numeric_range, boolean, text, product, product_variant → verify all in list', async ({ request }) => {
     let token: string | null = null
     let productId: string | null = null
     let extensionId: string | null = null
@@ -134,7 +134,8 @@ test.describe('D-UI-2: All 5 attribute types', () => {
         { key: 'seat_width', label: 'Seat Width', attributeType: 'numeric_range', allowedValues: { min: 60, max: 260, step: 10 }, attributeGroup: 'Dimensions', displayOrder: 1 },
         { key: 'armrest', label: 'Armrest', attributeType: 'boolean', attributeGroup: 'Options', displayOrder: 2 },
         { key: 'notes', label: 'Notes', attributeType: 'text', attributeGroup: null, displayOrder: 3 },
-        { key: 'frame_material', label: 'Frame Material', attributeType: 'material', attributeGroup: 'Materials', displayOrder: 4 },
+        { key: 'frame_product', label: 'Frame Product', attributeType: 'product', attributeGroup: 'Materials', displayOrder: 4 },
+        { key: 'fabric_variant', label: 'Fabric Variant', attributeType: 'product_variant', attributeGroup: 'Materials', displayOrder: 5 },
       ] as const
 
       for (const spec of types) {
@@ -151,14 +152,15 @@ test.describe('D-UI-2: All 5 attribute types', () => {
       }
 
       const list = await listConfigAttributes(request, token, productId)
-      expect(list.length).toBe(5)
+      expect(list.length).toBe(6)
 
       const typeSet = new Set(list.map((a) => a.attribute_type))
       expect(typeSet.has('enum')).toBe(true)
       expect(typeSet.has('numeric_range')).toBe(true)
       expect(typeSet.has('boolean')).toBe(true)
       expect(typeSet.has('text')).toBe(true)
-      expect(typeSet.has('material')).toBe(true)
+      expect(typeSet.has('product')).toBe(true)
+      expect(typeSet.has('product_variant')).toBe(true)
     } finally {
       for (const id of attrIds.reverse()) {
         await deleteConfigAttributeIfExists(request, token, id)

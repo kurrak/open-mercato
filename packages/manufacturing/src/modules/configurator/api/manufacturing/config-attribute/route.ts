@@ -49,7 +49,7 @@ const crud = makeCrudRoute({
     entityId: 'configurator:config_attribute',
     fields: [
       'id', 'organization_id', 'tenant_id', 'product_id', 'key', 'label',
-      'attribute_type', 'allowed_values', 'material_filter_id', 'is_mandatory',
+      'attribute_type', 'allowed_values', 'product_filter_id', 'is_mandatory',
       'display_order', 'default_value', 'attribute_group', 'is_active',
       'created_at', 'updated_at',
     ],
@@ -127,7 +127,7 @@ const listItemSchema = z.object({
   label: z.string().nullable().optional(),
   attribute_type: z.string().nullable().optional(),
   allowed_values: z.unknown().nullable().optional(),
-  material_filter_id: z.string().uuid().nullable().optional(),
+  product_filter_id: z.string().uuid().nullable().optional(),
   is_mandatory: z.boolean().nullable().optional(),
   display_order: z.number().nullable().optional(),
   default_value: z.string().nullable().optional(),
