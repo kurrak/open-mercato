@@ -8,12 +8,38 @@ import { BomHeader, BomLine } from '../data/entities'
 import {
   bomLineCreateSchema,
   bomLineUpdateSchema,
+  collectBomLineInvariantViolations,
   type BomLineCreateInput,
   type BomLineUpdateInput,
+  type InvariantViolation,
 } from '../data/validators'
+import { assertBomLineVariantBelongsToProduct } from '../lib/drift-guards'
 import { detectBomCycle } from '../lib/cycle-detection'
 import type { CrudEventsConfig } from '@open-mercato/shared/lib/crud/types'
 import type { DataEngine } from '@open-mercato/shared/lib/data/engine'
+
+// Converts a list of invariant violations into a 400 CrudHttpError whose body
+// carries both a human summary (first message) and a structured fieldErrors
+// map consumable by CrudForm. Mirrors the shape produced by
+// createCrudFormError on the client so both layers share one contract.
+function buildInvariantHttpError(violations: InvariantViolation[]): CrudHttpError {
+  const fieldErrors: Record<string, string> = {}
+  for (const v of violations) {
+    const key = v.path.length > 0 ? v.path.join('.') : '_form'
+    if (!fieldErrors[key]) fieldErrors[key] = v.message
+  }
+  return new CrudHttpError(400, {
+    error: violations[0]?.message ?? 'Validation failed',
+    fieldErrors,
+  })
+}
+
+// TODO (B2+UI): product_resolve_key namespace probe against ConfigAttribute.key
+// on the master product is warning-only per Graceful Incompleteness. Surface
+// it at UI-side pre-save via POST /api/manufacturing/configurator/validate-namespace
+// (see spec d §API Contracts / namespace probe pattern). The command path
+// intentionally does NOT run the probe — callers save draft-state BomLines
+// before the configurator is defined and should not be blocked.
 
 const bomLineCrudEvents: CrudEventsConfig = {
   module: 'bom',
@@ -112,6 +138,14 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
     if (parsed.childBomHeaderId) {
       await checkBomCycle(em, parsed.bomHeaderId, parsed.childBomHeaderId)
     }
+
+    const driftViolation = await assertBomLineVariantBelongsToProduct(
+      em,
+      parsed.productId,
+      parsed.productVariantId,
+      { tenantId: parsed.tenantId, organizationId: parsed.organizationId },
+    )
+    if (driftViolation) throw buildInvariantHttpError([driftViolation])
 
     const bomHeader = await em.findOneOrFail(BomHeader, { id: parsed.bomHeaderId })
     const record = em.create(BomLine, {
@@ -219,6 +253,28 @@ const updateBomLineCommand: CommandHandler<BomLineUpdateInput, { bomLineId: stri
     if (Object.keys(changes).length === 0) {
       return { bomLineId: record.id }
     }
+
+    // Invariant check on the merged post-update state. Zod only validates the
+    // partial patch in bomLineUpdateSchema; the command must see the full state.
+    const effectiveState = {
+      lineType: 'lineType' in changes ? (changes.lineType.to as string) : record.lineType,
+      productId: 'productId' in changes ? (changes.productId.to as string | null) : (record.productId ?? null),
+      productVariantId: 'productVariantId' in changes
+        ? (changes.productVariantId.to as string | null)
+        : (record.productVariantId ?? null),
+      productResolveKey: 'productResolveKey' in changes
+        ? (changes.productResolveKey.to as string | null)
+        : (record.productResolveKey ?? null),
+    }
+    const violations: InvariantViolation[] = collectBomLineInvariantViolations(effectiveState)
+    const driftViolation = await assertBomLineVariantBelongsToProduct(
+      em,
+      effectiveState.productId,
+      effectiveState.productVariantId,
+      { tenantId: record.tenantId, organizationId: record.organizationId },
+    )
+    if (driftViolation) violations.push(driftViolation)
+    if (violations.length > 0) throw buildInvariantHttpError(violations)
 
     for (const [key, change] of Object.entries(changes)) {
       ;(record as unknown as Record<string, unknown>)[key] = change.to

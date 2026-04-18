@@ -4,9 +4,12 @@ import {
   bomLineCreateSchema,
   bomLineVariantCreateSchema,
   bomExplosionInputSchema,
+  collectBomLineInvariantViolations,
+  collectBomLineVariantInvariantViolations,
 } from '../data/validators'
 
 const uuid = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+const uuid2 = 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
 const scope = { organizationId: uuid, tenantId: uuid }
 
 describe('BomHeader validators', () => {
@@ -79,6 +82,123 @@ describe('BomLine validators', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('rejects BomLine with both productId and productResolveKey (static XOR dynamic)', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      productId: uuid2,
+      productResolveKey: 'fabric',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects BomLine with productResolveKey + productVariantId (dynamic cannot pin variant)', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      productResolveKey: 'fabric',
+      productVariantId: uuid2,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects BomLine with productVariantId but no productId (variant requires product)', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      productVariantId: uuid2,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects BomLine with productResolveKey on semi_product line', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      lineType: 'semi_product',
+      childBomHeaderId: uuid2,
+      productResolveKey: 'fabric',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts BomLine with only productResolveKey (dynamic mode)', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      productResolveKey: 'fabric',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts BomLine with productId + productVariantId (static pinning)', () => {
+    const result = bomLineCreateSchema.safeParse({
+      ...scope,
+      bomHeaderId: uuid,
+      productId: uuid,
+      productVariantId: uuid2,
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('collectBomLineInvariantViolations (pure fn, used by update command)', () => {
+  it('returns empty list for valid state', () => {
+    expect(collectBomLineInvariantViolations({
+      lineType: 'material',
+      productId: uuid,
+      productVariantId: uuid2,
+      productResolveKey: null,
+    })).toEqual([])
+  })
+
+  it('flags static-vs-dynamic XOR', () => {
+    const violations = collectBomLineInvariantViolations({
+      productId: uuid,
+      productResolveKey: 'fabric',
+    })
+    expect(violations.some((v) => v.message.includes('cannot carry both'))).toBe(true)
+  })
+
+  it('flags resolve-key + variant pinning', () => {
+    const violations = collectBomLineInvariantViolations({
+      productResolveKey: 'fabric',
+      productVariantId: uuid,
+    })
+    expect(violations.some((v) => v.message.includes('cannot also pin'))).toBe(true)
+  })
+
+  it('flags variant without product', () => {
+    const violations = collectBomLineInvariantViolations({
+      productVariantId: uuid,
+    })
+    expect(violations.some((v) => v.message.includes('variant requires parent product'))).toBe(true)
+  })
+
+  it('flags resolve-key on semi_product', () => {
+    const violations = collectBomLineInvariantViolations({
+      lineType: 'semi_product',
+      productResolveKey: 'fabric',
+    })
+    expect(violations.some((v) => v.message.includes("line_type = 'material'"))).toBe(true)
+  })
+
+  it('stacks multiple violations', () => {
+    // State deliberately triggers exactly 3 rules:
+    //  - resolve+product (static XOR dynamic)
+    //  - resolve+variant (dynamic cannot pin variant)
+    //  - resolve+semi_product (resolve-key scope)
+    // Anchored with toBe(3) so silently dropping a rule in the future fails
+    // the test instead of degrading to 2.
+    const violations = collectBomLineInvariantViolations({
+      lineType: 'semi_product',
+      productId: uuid,
+      productVariantId: uuid2,
+      productResolveKey: 'fabric',
+    })
+    expect(violations).toHaveLength(3)
+  })
 })
 
 describe('BomLineVariant validators', () => {
@@ -116,6 +236,67 @@ describe('BomLineVariant validators', () => {
       bomLineId: uuid,
     })
     expect(result.success).toBe(false)
+  })
+
+  it('rejects productVariantOverrideId without productOverrideId', () => {
+    const result = bomLineVariantCreateSchema.safeParse({
+      ...scope,
+      bomLineId: uuid,
+      variantId: uuid2,
+      productVariantOverrideId: uuid,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts productOverrideId + productVariantOverrideId paired', () => {
+    const result = bomLineVariantCreateSchema.safeParse({
+      ...scope,
+      bomLineId: uuid,
+      variantId: uuid2,
+      productOverrideId: uuid,
+      productVariantOverrideId: uuid2,
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('collectBomLineVariantInvariantViolations (pure fn)', () => {
+  it('returns empty list for variantId-only activation', () => {
+    expect(collectBomLineVariantInvariantViolations({
+      variantId: uuid,
+      variantCondition: null,
+    })).toEqual([])
+  })
+
+  it('returns empty list for variantCondition-only activation', () => {
+    expect(collectBomLineVariantInvariantViolations({
+      variantId: null,
+      variantCondition: { color: ['red'] },
+    })).toEqual([])
+  })
+
+  it('flags activation XOR when both present', () => {
+    const violations = collectBomLineVariantInvariantViolations({
+      variantId: uuid,
+      variantCondition: { color: ['red'] },
+    })
+    expect(violations.some((v) => v.message.includes('activation XOR'))).toBe(true)
+  })
+
+  it('flags activation XOR when neither present', () => {
+    const violations = collectBomLineVariantInvariantViolations({
+      variantId: null,
+      variantCondition: null,
+    })
+    expect(violations.some((v) => v.message.includes('activation XOR'))).toBe(true)
+  })
+
+  it('flags productVariantOverrideId without productOverrideId', () => {
+    const violations = collectBomLineVariantInvariantViolations({
+      variantId: uuid,
+      productVariantOverrideId: uuid,
+    })
+    expect(violations.some((v) => v.message.includes('requires product_override_id'))).toBe(true)
   })
 })
 

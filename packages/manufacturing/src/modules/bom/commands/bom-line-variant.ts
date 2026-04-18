@@ -8,10 +8,27 @@ import { BomLine, BomLineVariant } from '../data/entities'
 import {
   bomLineVariantCreateSchema,
   bomLineVariantUpdateSchema,
+  collectBomLineVariantInvariantViolations,
   type BomLineVariantCreateInput,
   type BomLineVariantUpdateInput,
+  type InvariantViolation,
 } from '../data/validators'
+import { assertBomLineVariantOverrideBelongsToProduct } from '../lib/drift-guards'
 import type { DataEngine } from '@open-mercato/shared/lib/data/engine'
+
+// Same structured-error helper as bom-line.ts — kept colocated to avoid a
+// shared file for two callers.
+function buildInvariantHttpError(violations: InvariantViolation[]): CrudHttpError {
+  const fieldErrors: Record<string, string> = {}
+  for (const v of violations) {
+    const key = v.path.length > 0 ? v.path.join('.') : '_form'
+    if (!fieldErrors[key]) fieldErrors[key] = v.message
+  }
+  return new CrudHttpError(400, {
+    error: violations[0]?.message ?? 'Validation failed',
+    fieldErrors,
+  })
+}
 
 type BLVSnapshot = {
   id: string
@@ -50,6 +67,14 @@ const createBLVCommand: CommandHandler<BomLineVariantCreateInput, { bomLineVaria
   async execute(input, ctx) {
     const parsed = bomLineVariantCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
+
+    const driftViolation = await assertBomLineVariantOverrideBelongsToProduct(
+      em,
+      parsed.productOverrideId,
+      parsed.productVariantOverrideId,
+      { tenantId: parsed.tenantId, organizationId: parsed.organizationId },
+    )
+    if (driftViolation) throw buildInvariantHttpError([driftViolation])
 
     const bomLine = await em.findOneOrFail(BomLine, { id: parsed.bomLineId })
 
@@ -143,6 +168,29 @@ const updateBLVCommand: CommandHandler<BomLineVariantUpdateInput, { bomLineVaria
     if (Object.keys(changes).length === 0) {
       return { bomLineVariantId: record.id }
     }
+
+    // Invariant check on the merged post-update state.
+    const effectiveState = {
+      variantId: 'variantId' in changes ? (changes.variantId.to as string | null) : (record.variantId ?? null),
+      variantCondition: 'variantCondition' in changes
+        ? (changes.variantCondition.to as Record<string, unknown> | null)
+        : (record.variantCondition ?? null),
+      productOverrideId: 'productOverrideId' in changes
+        ? (changes.productOverrideId.to as string | null)
+        : (record.productOverrideId ?? null),
+      productVariantOverrideId: 'productVariantOverrideId' in changes
+        ? (changes.productVariantOverrideId.to as string | null)
+        : (record.productVariantOverrideId ?? null),
+    }
+    const violations: InvariantViolation[] = collectBomLineVariantInvariantViolations(effectiveState)
+    const driftViolation = await assertBomLineVariantOverrideBelongsToProduct(
+      em,
+      effectiveState.productOverrideId,
+      effectiveState.productVariantOverrideId,
+      { tenantId: record.tenantId, organizationId: record.organizationId },
+    )
+    if (driftViolation) violations.push(driftViolation)
+    if (violations.length > 0) throw buildInvariantHttpError(violations)
 
     for (const [key, change] of Object.entries(changes)) {
       ;(record as unknown as Record<string, unknown>)[key] = change.to
