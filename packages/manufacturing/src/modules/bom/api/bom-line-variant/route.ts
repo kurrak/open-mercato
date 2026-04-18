@@ -43,7 +43,8 @@ const crud = makeCrudRoute({
     entityId: 'bom:bom_line_variant',
     fields: [
       'id', 'organization_id', 'tenant_id', 'bom_line_id', 'variant_id',
-      'variant_condition', 'quantity_override', 'material_override_id',
+      'variant_condition', 'quantity_override',
+      'product_override_id', 'product_variant_override_id',
       'unit_override_id', 'notes', 'created_at', 'updated_at',
     ],
     sortFieldMap: {
@@ -106,7 +107,8 @@ const listItemSchema = z.object({
   variant_id: z.string().uuid().nullable().optional(),
   variant_condition: z.record(z.string(), z.unknown()).nullable().optional(),
   quantity_override: z.string().nullable().optional(),
-  material_override_id: z.string().uuid().nullable().optional(),
+  product_override_id: z.string().uuid().nullable().optional(),
+  product_variant_override_id: z.string().uuid().nullable().optional(),
   unit_override_id: z.string().uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
   created_at: z.string().nullable().optional(),

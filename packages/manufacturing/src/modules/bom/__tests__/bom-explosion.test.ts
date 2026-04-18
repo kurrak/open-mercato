@@ -19,7 +19,9 @@ function makeHeader(overrides: Partial<BomHeaderData> & { id: string }): BomHead
 function makeLine(overrides: Partial<BomLineData> & { id: string; bomHeaderId: string }): BomLineData {
   return {
     lineType: 'material',
-    materialId: null,
+    productId: null,
+    productVariantId: null,
+    productResolveKey: null,
     childBomHeaderId: null,
     netQuantity: null,
     grossQuantity: null,
@@ -40,7 +42,8 @@ function makeVariant(overrides: Partial<BomLineVariantData> & { id: string; bomL
     variantId: null,
     variantCondition: null,
     quantityOverride: null,
-    materialOverrideId: null,
+    productOverrideId: null,
+    productVariantOverrideId: null,
     unitOverrideId: null,
     ...overrides,
   }
@@ -137,32 +140,32 @@ describe('explodeBom', () => {
   it('explodes a simple flat BOM', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-1', netQuantity: '2.5', uomId: 'uom-szt' }),
-      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', materialId: 'mat-2', netQuantity: '1', uomId: 'uom-m', sortOrder: 1 }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '2.5', uomId: 'uom-szt' }),
+      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '1', uomId: 'uom-m', sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1'), loader)
 
     expect(result.lines).toHaveLength(2)
-    expect(result.lines[0].materialId).toBe('mat-1')
+    expect(result.lines[0].productId).toBe('mat-1')
     expect(result.lines[0].quantity).toBe(2.5)
-    expect(result.lines[1].materialId).toBe('mat-2')
+    expect(result.lines[1].productId).toBe('mat-2')
     expect(result.depth).toBe(0)
     expect(result.warnings).toHaveLength(0)
   })
 
-  it('skips lines with null materialId and warns', async () => {
+  it('skips lines with null productId and warns', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: null, netQuantity: '1' }),
-      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', materialId: 'mat-2', netQuantity: '3' }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: null, netQuantity: '1' }),
+      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '3' }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1'), loader)
 
     expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].materialId).toBe('mat-2')
-    expect(result.warnings).toContain('Line line-1 has null material_id — skipped')
+    expect(result.lines[0].productId).toBe('mat-2')
+    expect(result.warnings).toContain('Line line-1 has null product_id — skipped')
   })
 
   it('handles empty BOM (no lines)', async () => {
@@ -176,7 +179,7 @@ describe('explodeBom', () => {
 
   it('skips inactive BOM', async () => {
     const headers = [makeHeader({ id: 'bom-1', isActive: false })]
-    const lines = [makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-1', netQuantity: '1' })]
+    const lines = [makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '1' })]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1'), loader)
 
@@ -187,22 +190,22 @@ describe('explodeBom', () => {
   it('filters lines by date-effective range', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-1', netQuantity: '1', validFrom: new Date('2026-01-01'), validTo: new Date('2026-05-31') }),
-      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', materialId: 'mat-2', netQuantity: '1', validFrom: new Date('2026-06-01'), validTo: new Date('2026-12-31'), sortOrder: 1 }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '1', validFrom: new Date('2026-01-01'), validTo: new Date('2026-05-31') }),
+      makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '1', validFrom: new Date('2026-06-01'), validTo: new Date('2026-12-31'), sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1', { effectiveDate: new Date('2026-06-15') }), loader)
 
     expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].materialId).toBe('mat-2')
+    expect(result.lines[0].productId).toBe('mat-2')
   })
 
   it('filters lines by variant condition', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-common', bomHeaderId: 'bom-1', materialId: 'mat-frame', netQuantity: '1' }),
-      makeLine({ id: 'line-padded', bomHeaderId: 'bom-1', materialId: 'mat-padding', netQuantity: '2', variantCondition: { seat_type: ['padded'] }, sortOrder: 1 }),
-      makeLine({ id: 'line-flat', bomHeaderId: 'bom-1', materialId: 'mat-flat', netQuantity: '1', variantCondition: { seat_type: ['flat'] }, sortOrder: 2 }),
+      makeLine({ id: 'line-common', bomHeaderId: 'bom-1', productId: 'mat-frame', netQuantity: '1' }),
+      makeLine({ id: 'line-padded', bomHeaderId: 'bom-1', productId: 'mat-padding', netQuantity: '2', variantCondition: { seat_type: ['padded'] }, sortOrder: 1 }),
+      makeLine({ id: 'line-flat', bomHeaderId: 'bom-1', productId: 'mat-flat', netQuantity: '1', variantCondition: { seat_type: ['flat'] }, sortOrder: 2 }),
     ]
     const loader = createLoader(headers, lines)
 
@@ -212,13 +215,13 @@ describe('explodeBom', () => {
     )
 
     expect(result.lines).toHaveLength(2)
-    expect(result.lines.map((l) => l.materialId)).toEqual(['mat-frame', 'mat-padding'])
+    expect(result.lines.map((l) => l.productId)).toEqual(['mat-frame', 'mat-padding'])
   })
 
   it('applies BomLineVariant quantity override', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-fabric', netQuantity: '5', uomId: 'uom-m' }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-fabric', netQuantity: '5', uomId: 'uom-m' }),
     ]
     const variants = [
       makeVariant({
@@ -238,16 +241,16 @@ describe('explodeBom', () => {
     expect(result.lines[0].quantity).toBe(8)
   })
 
-  it('applies BomLineVariant material override', async () => {
+  it('applies BomLineVariant product override', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-standard', netQuantity: '1' }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-standard', netQuantity: '1' }),
     ]
     const variants = [
       makeVariant({
         id: 'v-1', bomLineId: 'line-1',
         variantCondition: { grade: ['premium'] },
-        materialOverrideId: 'mat-premium',
+        productOverrideId: 'mat-premium',
       }),
     ]
     const loader = createLoader(headers, lines, variants)
@@ -258,7 +261,7 @@ describe('explodeBom', () => {
     )
 
     expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].materialId).toBe('mat-premium')
+    expect(result.lines[0].productId).toBe('mat-premium')
   })
 
   it('handles phantom BOM pass-through', async () => {
@@ -268,16 +271,16 @@ describe('explodeBom', () => {
     ]
     const lines = [
       makeLine({ id: 'line-child', bomHeaderId: 'bom-parent', lineType: 'semi_product', childBomHeaderId: 'bom-phantom' }),
-      makeLine({ id: 'line-wood', bomHeaderId: 'bom-phantom', materialId: 'mat-wood', netQuantity: '4' }),
-      makeLine({ id: 'line-screws', bomHeaderId: 'bom-phantom', materialId: 'mat-screws', netQuantity: '20', sortOrder: 1 }),
+      makeLine({ id: 'line-wood', bomHeaderId: 'bom-phantom', productId: 'mat-wood', netQuantity: '4' }),
+      makeLine({ id: 'line-screws', bomHeaderId: 'bom-phantom', productId: 'mat-screws', netQuantity: '20', sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-parent'), loader)
 
     expect(result.lines).toHaveLength(2)
-    expect(result.lines[0].materialId).toBe('mat-wood')
+    expect(result.lines[0].productId).toBe('mat-wood')
     expect(result.lines[0].isPhantomPassThrough).toBe(true)
-    expect(result.lines[1].materialId).toBe('mat-screws')
+    expect(result.lines[1].productId).toBe('mat-screws')
     expect(result.lines[1].isPhantomPassThrough).toBe(true)
   })
 
@@ -287,17 +290,17 @@ describe('explodeBom', () => {
       makeHeader({ id: 'bom-child', productId: 'prod-seat' }),
     ]
     const lines = [
-      makeLine({ id: 'line-seat', bomHeaderId: 'bom-parent', lineType: 'semi_product', childBomHeaderId: 'bom-child', materialId: 'prod-seat', netQuantity: '1' }),
-      makeLine({ id: 'line-foam', bomHeaderId: 'bom-child', materialId: 'mat-foam', netQuantity: '2' }),
+      makeLine({ id: 'line-seat', bomHeaderId: 'bom-parent', lineType: 'semi_product', childBomHeaderId: 'bom-child', productId: 'prod-seat', netQuantity: '1' }),
+      makeLine({ id: 'line-foam', bomHeaderId: 'bom-child', productId: 'mat-foam', netQuantity: '2' }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-parent'), loader)
 
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0].level).toBe(0)
-    expect(result.lines[0].materialId).toBe('prod-seat')
+    expect(result.lines[0].productId).toBe('prod-seat')
     expect(result.lines[1].level).toBe(1)
-    expect(result.lines[1].materialId).toBe('mat-foam')
+    expect(result.lines[1].productId).toBe('mat-foam')
     expect(result.depth).toBe(1)
   })
 
@@ -308,9 +311,9 @@ describe('explodeBom', () => {
       makeHeader({ id: 'bom-L2' }),
     ]
     const lines = [
-      makeLine({ id: 'l0-sub', bomHeaderId: 'bom-L0', lineType: 'semi_product', childBomHeaderId: 'bom-L1', materialId: 'sub-1', netQuantity: '1' }),
-      makeLine({ id: 'l1-sub', bomHeaderId: 'bom-L1', lineType: 'semi_product', childBomHeaderId: 'bom-L2', materialId: 'sub-2', netQuantity: '1' }),
-      makeLine({ id: 'l2-mat', bomHeaderId: 'bom-L2', materialId: 'mat-raw', netQuantity: '10' }),
+      makeLine({ id: 'l0-sub', bomHeaderId: 'bom-L0', lineType: 'semi_product', childBomHeaderId: 'bom-L1', productId: 'sub-1', netQuantity: '1' }),
+      makeLine({ id: 'l1-sub', bomHeaderId: 'bom-L1', lineType: 'semi_product', childBomHeaderId: 'bom-L2', productId: 'sub-2', netQuantity: '1' }),
+      makeLine({ id: 'l2-mat', bomHeaderId: 'bom-L2', productId: 'mat-raw', netQuantity: '10' }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-L0'), loader)
@@ -325,8 +328,8 @@ describe('explodeBom', () => {
       makeHeader({ id: 'bom-B' }),
     ]
     const lines = [
-      makeLine({ id: 'line-A', bomHeaderId: 'bom-A', lineType: 'semi_product', childBomHeaderId: 'bom-B', materialId: 'x', netQuantity: '1' }),
-      makeLine({ id: 'line-B', bomHeaderId: 'bom-B', lineType: 'semi_product', childBomHeaderId: 'bom-A', materialId: 'y', netQuantity: '1' }),
+      makeLine({ id: 'line-A', bomHeaderId: 'bom-A', lineType: 'semi_product', childBomHeaderId: 'bom-B', productId: 'x', netQuantity: '1' }),
+      makeLine({ id: 'line-B', bomHeaderId: 'bom-B', lineType: 'semi_product', childBomHeaderId: 'bom-A', productId: 'y', netQuantity: '1' }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-A'), loader)
@@ -340,10 +343,10 @@ describe('explodeBom', () => {
       makeLine({
         id: `line-${i}`, bomHeaderId: `bom-${i}`,
         lineType: 'semi_product', childBomHeaderId: `bom-${i + 1}`,
-        materialId: `sub-${i}`, netQuantity: '1',
+        productId: `sub-${i}`, netQuantity: '1',
       }),
     )
-    lines.push(makeLine({ id: 'line-leaf', bomHeaderId: 'bom-4', materialId: 'mat-leaf', netQuantity: '1' }))
+    lines.push(makeLine({ id: 'line-leaf', bomHeaderId: 'bom-4', productId: 'mat-leaf', netQuantity: '1' }))
 
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-0', { maxDepth: 2 }), loader)
@@ -354,7 +357,7 @@ describe('explodeBom', () => {
   it('computes gross quantity with scrap percentage', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-1', netQuantity: '10', scrapPercentage: '10' }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '10', scrapPercentage: '10' }),
     ]
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1'), loader)
@@ -387,13 +390,13 @@ describe('explodeBom', () => {
     ]
     const lines = [
       // Sofa top level: fabric (always) + frame sub-assembly
-      makeLine({ id: 'sofa-fabric', bomHeaderId: 'bom-sofa', materialId: 'mat-fabric', netQuantity: '6', sortOrder: 0 }),
+      makeLine({ id: 'sofa-fabric', bomHeaderId: 'bom-sofa', productId: 'mat-fabric', netQuantity: '6', sortOrder: 0 }),
       makeLine({ id: 'sofa-frame', bomHeaderId: 'bom-sofa', lineType: 'semi_product', childBomHeaderId: 'bom-frame', sortOrder: 1 }),
       // Frame (phantom): wood always, old screws until May, new screws from June, reinforcement for heavy_duty only
-      makeLine({ id: 'frame-wood', bomHeaderId: 'bom-frame', materialId: 'mat-wood', netQuantity: '4', sortOrder: 0 }),
-      makeLine({ id: 'frame-screws-old', bomHeaderId: 'bom-frame', materialId: 'mat-screws-v1', netQuantity: '20', validFrom: new Date('2026-01-01'), validTo: new Date('2026-05-31'), sortOrder: 1 }),
-      makeLine({ id: 'frame-screws-new', bomHeaderId: 'bom-frame', materialId: 'mat-screws-v2', netQuantity: '16', validFrom: new Date('2026-06-01'), validTo: new Date('2026-12-31'), sortOrder: 2 }),
-      makeLine({ id: 'frame-reinforce', bomHeaderId: 'bom-frame', materialId: 'mat-steel-bar', netQuantity: '2', variantCondition: { duty: ['heavy'] }, sortOrder: 3 }),
+      makeLine({ id: 'frame-wood', bomHeaderId: 'bom-frame', productId: 'mat-wood', netQuantity: '4', sortOrder: 0 }),
+      makeLine({ id: 'frame-screws-old', bomHeaderId: 'bom-frame', productId: 'mat-screws-v1', netQuantity: '20', validFrom: new Date('2026-01-01'), validTo: new Date('2026-05-31'), sortOrder: 1 }),
+      makeLine({ id: 'frame-screws-new', bomHeaderId: 'bom-frame', productId: 'mat-screws-v2', netQuantity: '16', validFrom: new Date('2026-06-01'), validTo: new Date('2026-12-31'), sortOrder: 2 }),
+      makeLine({ id: 'frame-reinforce', bomHeaderId: 'bom-frame', productId: 'mat-steel-bar', netQuantity: '2', variantCondition: { duty: ['heavy'] }, sortOrder: 3 }),
     ]
     const loader = createLoader(headers, lines)
 
@@ -402,7 +405,7 @@ describe('explodeBom', () => {
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: ['standard'] } }),
       loader,
     )
-    expect(r1.lines.map((l) => l.materialId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2'])
+    expect(r1.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2'])
     expect(r1.lines[1].isPhantomPassThrough).toBe(true)
     expect(r1.lines[2].isPhantomPassThrough).toBe(true)
 
@@ -411,14 +414,14 @@ describe('explodeBom', () => {
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-03-15'), variantConditions: { duty: ['heavy'] } }),
       loader,
     )
-    expect(r2.lines.map((l) => l.materialId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v1', 'mat-steel-bar'])
+    expect(r2.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v1', 'mat-steel-bar'])
 
     // Test 3: June date, heavy duty → fabric + wood + new screws + reinforcement
     const r3 = await explodeBom(
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: ['heavy'] } }),
       loader,
     )
-    expect(r3.lines.map((l) => l.materialId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2', 'mat-steel-bar'])
+    expect(r3.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2', 'mat-steel-bar'])
   })
 
   it('combines variant condition filtering + BomLineVariant override', async () => {
@@ -426,8 +429,8 @@ describe('explodeBom', () => {
     // and a BomLineVariant overrides quantity for the "XL" variant.
     const headers = [makeHeader({ id: 'bom-seat' })]
     const lines = [
-      makeLine({ id: 'seat-base', bomHeaderId: 'bom-seat', materialId: 'mat-plywood', netQuantity: '1', sortOrder: 0 }),
-      makeLine({ id: 'seat-foam', bomHeaderId: 'bom-seat', materialId: 'mat-foam', netQuantity: '2', variantCondition: { seat_type: ['padded', 'xl_padded'] }, sortOrder: 1 }),
+      makeLine({ id: 'seat-base', bomHeaderId: 'bom-seat', productId: 'mat-plywood', netQuantity: '1', sortOrder: 0 }),
+      makeLine({ id: 'seat-foam', bomHeaderId: 'bom-seat', productId: 'mat-foam', netQuantity: '2', variantCondition: { seat_type: ['padded', 'xl_padded'] }, sortOrder: 1 }),
     ]
     const variants = [
       makeVariant({
@@ -460,13 +463,13 @@ describe('explodeBom', () => {
       loader,
     )
     expect(r3.lines).toHaveLength(1)
-    expect(r3.lines[0].materialId).toBe('mat-plywood')
+    expect(r3.lines[0].productId).toBe('mat-plywood')
   })
 
   it('applies BomLineVariant override by variant_id', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
-      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', materialId: 'mat-A', netQuantity: '10', uomId: 'uom-m' }),
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-A', netQuantity: '10', uomId: 'uom-m' }),
     ]
     const variants = [
       makeVariant({
@@ -478,7 +481,7 @@ describe('explodeBom', () => {
       makeVariant({
         id: 'v-blue', bomLineId: 'line-1',
         variantId: 'variant-blue',
-        materialOverrideId: 'mat-B',
+        productOverrideId: 'mat-B',
       }),
     ]
     const loader = createLoader(headers, lines, variants)
@@ -493,7 +496,7 @@ describe('explodeBom', () => {
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].quantity).toBe(10)
     expect(result.lines[0].uomId).toBe('uom-m')
-    expect(result.lines[0].materialId).toBe('mat-A')
+    expect(result.lines[0].productId).toBe('mat-A')
   })
 
   it('handles separate child BOMs per variant (variant-conditional semi_product lines)', async () => {
@@ -505,14 +508,14 @@ describe('explodeBom', () => {
       makeHeader({ id: 'bom-back-large', productId: 'prod-back-l' }),
     ]
     const lines = [
-      makeLine({ id: 'chair-seat', bomHeaderId: 'bom-chair', materialId: 'mat-seat', netQuantity: '1', sortOrder: 0 }),
-      makeLine({ id: 'chair-back-s', bomHeaderId: 'bom-chair', lineType: 'semi_product', childBomHeaderId: 'bom-back-small', materialId: 'prod-back-s', netQuantity: '1', variantCondition: { back_size: ['small'] }, sortOrder: 1 }),
-      makeLine({ id: 'chair-back-l', bomHeaderId: 'bom-chair', lineType: 'semi_product', childBomHeaderId: 'bom-back-large', materialId: 'prod-back-l', netQuantity: '1', variantCondition: { back_size: ['large'] }, sortOrder: 2 }),
+      makeLine({ id: 'chair-seat', bomHeaderId: 'bom-chair', productId: 'mat-seat', netQuantity: '1', sortOrder: 0 }),
+      makeLine({ id: 'chair-back-s', bomHeaderId: 'bom-chair', lineType: 'semi_product', childBomHeaderId: 'bom-back-small', productId: 'prod-back-s', netQuantity: '1', variantCondition: { back_size: ['small'] }, sortOrder: 1 }),
+      makeLine({ id: 'chair-back-l', bomHeaderId: 'bom-chair', lineType: 'semi_product', childBomHeaderId: 'bom-back-large', productId: 'prod-back-l', netQuantity: '1', variantCondition: { back_size: ['large'] }, sortOrder: 2 }),
       // Small backrest BOM
-      makeLine({ id: 'back-s-wood', bomHeaderId: 'bom-back-small', materialId: 'mat-wood-thin', netQuantity: '2' }),
+      makeLine({ id: 'back-s-wood', bomHeaderId: 'bom-back-small', productId: 'mat-wood-thin', netQuantity: '2' }),
       // Large backrest BOM
-      makeLine({ id: 'back-l-wood', bomHeaderId: 'bom-back-large', materialId: 'mat-wood-thick', netQuantity: '3' }),
-      makeLine({ id: 'back-l-foam', bomHeaderId: 'bom-back-large', materialId: 'mat-foam', netQuantity: '1', sortOrder: 1 }),
+      makeLine({ id: 'back-l-wood', bomHeaderId: 'bom-back-large', productId: 'mat-wood-thick', netQuantity: '3' }),
+      makeLine({ id: 'back-l-foam', bomHeaderId: 'bom-back-large', productId: 'mat-foam', netQuantity: '1', sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
 
@@ -521,13 +524,13 @@ describe('explodeBom', () => {
       defaultInput('bom-chair', { variantConditions: { back_size: ['small'] } }),
       loader,
     )
-    expect(rSmall.lines.map((l) => l.materialId)).toEqual(['mat-seat', 'prod-back-s', 'mat-wood-thin'])
+    expect(rSmall.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-s', 'mat-wood-thin'])
 
     // Large backrest: seat + large back sub-assy + its child materials
     const rLarge = await explodeBom(
       defaultInput('bom-chair', { variantConditions: { back_size: ['large'] } }),
       loader,
     )
-    expect(rLarge.lines.map((l) => l.materialId)).toEqual(['mat-seat', 'prod-back-l', 'mat-wood-thick', 'mat-foam'])
+    expect(rLarge.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-l', 'mat-wood-thick', 'mat-foam'])
   })
 })

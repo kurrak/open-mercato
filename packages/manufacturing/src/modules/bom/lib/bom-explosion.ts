@@ -21,7 +21,9 @@ export type BomLineData = {
   id: string
   bomHeaderId: string
   lineType: 'material' | 'semi_product'
-  materialId: string | null
+  productId: string | null
+  productVariantId: string | null
+  productResolveKey: string | null
   childBomHeaderId: string | null
   netQuantity: string | null
   grossQuantity: string | null
@@ -41,7 +43,8 @@ export type BomLineVariantData = {
   variantId: string | null
   variantCondition: Record<string, unknown> | null
   quantityOverride: string | null
-  materialOverrideId: string | null
+  productOverrideId: string | null
+  productVariantOverrideId: string | null
   unitOverrideId: string | null
 }
 
@@ -54,7 +57,7 @@ export type ExplosionInput = {
 
 export type ExplosionLine = {
   bomLineId: string
-  materialId: string | null
+  productId: string | null
   quantity: number
   uomId: string | null
   scrapPercentage: number
@@ -105,8 +108,8 @@ function applyLineVariantOverrides(
   variants: BomLineVariantData[],
   inputConditions: Record<string, string[]>,
   variantId?: string,
-): { materialId: string | null; quantity: string | null; uomId: string | null } {
-  let materialId = line.materialId
+): { productId: string | null; quantity: string | null; uomId: string | null } {
+  let productId = line.productId
   let quantity = line.netQuantity
   let uomId = line.uomId
 
@@ -124,14 +127,14 @@ function applyLineVariantOverrides(
     }
 
     if (matches) {
-      if (variant.materialOverrideId) materialId = variant.materialOverrideId
+      if (variant.productOverrideId) productId = variant.productOverrideId
       if (variant.quantityOverride) quantity = variant.quantityOverride
       if (variant.unitOverrideId) uomId = variant.unitOverrideId
       break
     }
   }
 
-  return { materialId, quantity, uomId }
+  return { productId, quantity, uomId }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +215,7 @@ export async function explodeBom(
           const scrap = parseFloat(line.scrapPercentage ?? '0')
           result.lines.push({
             bomLineId: line.id,
-            materialId: overrides.materialId,
+            productId: overrides.productId,
             quantity: qty,
             uomId: overrides.uomId,
             scrapPercentage: scrap,
@@ -231,8 +234,8 @@ export async function explodeBom(
       }
 
       // Material line
-      if (!overrides.materialId) {
-        result.warnings.push(`Line ${line.id} has null material_id — skipped`)
+      if (!overrides.productId) {
+        result.warnings.push(`Line ${line.id} has null product_id — skipped`)
         continue
       }
 
@@ -241,7 +244,7 @@ export async function explodeBom(
 
       result.lines.push({
         bomLineId: line.id,
-        materialId: overrides.materialId,
+        productId: overrides.productId,
         quantity: qty,
         uomId: overrides.uomId,
         scrapPercentage: scrap,

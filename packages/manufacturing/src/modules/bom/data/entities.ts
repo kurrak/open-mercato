@@ -78,8 +78,16 @@ export type BomLineType = 'material' | 'semi_product'
   properties: ['bomHeader', 'sortOrder'],
 })
 @Index({
-  name: 'manufacturing_bl_org_material_idx',
-  properties: ['organizationId', 'materialId'],
+  name: 'manufacturing_bl_org_product_idx',
+  properties: ['organizationId', 'productId'],
+})
+@Index({
+  name: 'manufacturing_bl_org_product_variant_idx',
+  properties: ['organizationId', 'productVariantId'],
+})
+@Index({
+  name: 'manufacturing_bl_org_product_resolve_key_idx',
+  properties: ['organizationId', 'productResolveKey'],
 })
 @Index({
   name: 'manufacturing_bl_header_dates_idx',
@@ -107,8 +115,14 @@ export class BomLine {
   @Property({ name: 'line_type', type: 'text', default: 'material' })
   lineType: BomLineType = 'material'
 
-  @Property({ name: 'material_id', type: 'uuid', nullable: true })
-  materialId?: string | null
+  @Property({ name: 'product_id', type: 'uuid', nullable: true })
+  productId?: string | null
+
+  @Property({ name: 'product_variant_id', type: 'uuid', nullable: true })
+  productVariantId?: string | null
+
+  @Property({ name: 'product_resolve_key', type: 'varchar', length: 100, nullable: true })
+  productResolveKey?: string | null
 
   @Property({ name: 'child_bom_header_id', type: 'uuid', nullable: true })
   childBomHeaderId?: string | null
@@ -172,6 +186,14 @@ export class BomLine {
   name: 'manufacturing_blv_line_idx',
   properties: ['bomLine'],
 })
+@Index({
+  name: 'manufacturing_blv_org_product_override_idx',
+  properties: ['organizationId', 'productOverrideId'],
+})
+@Index({
+  name: 'manufacturing_blv_org_product_variant_override_idx',
+  properties: ['organizationId', 'productVariantOverrideId'],
+})
 @Check({
   name: 'manufacturing_blv_variant_xor',
   expression: `("variant_id" IS NOT NULL AND "variant_condition" IS NULL) OR ("variant_id" IS NULL AND "variant_condition" IS NOT NULL)`,
@@ -204,8 +226,11 @@ export class BomLineVariant {
   @Property({ name: 'quantity_override', type: 'numeric', precision: 18, scale: 4, nullable: true })
   quantityOverride?: string | null
 
-  @Property({ name: 'material_override_id', type: 'uuid', nullable: true })
-  materialOverrideId?: string | null
+  @Property({ name: 'product_override_id', type: 'uuid', nullable: true })
+  productOverrideId?: string | null
+
+  @Property({ name: 'product_variant_override_id', type: 'uuid', nullable: true })
+  productVariantOverrideId?: string | null
 
   @Property({ name: 'unit_override_id', type: 'uuid', nullable: true })
   unitOverrideId?: string | null

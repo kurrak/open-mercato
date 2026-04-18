@@ -7,14 +7,15 @@ import { getAuthFromRequest } from '@open-mercato/shared/lib/auth/server'
 import { resolveTranslations } from '@open-mercato/shared/lib/i18n/server'
 import { CrudHttpError } from '@open-mercato/shared/lib/crud/errors'
 import { findWithDecryption } from '@open-mercato/shared/lib/encryption/find'
-import { BomLine, BomHeader } from '../../data/entities'
+import { BomLine, BomLineVariant, BomHeader } from '../../data/entities'
 
 export const metadata = {
   GET: { requireAuth: true, requireFeatures: ['bom.view'] },
 }
 
 const querySchema = z.object({
-  materialId: z.string().uuid(),
+  productId: z.string().uuid(),
+  productVariantId: z.string().uuid().optional(),
 })
 
 export async function GET(req: Request) {
@@ -38,32 +39,59 @@ export async function GET(req: Request) {
     }
 
     const em = (container.resolve('em') as EntityManager).fork()
+    const scope = { organizationId, tenantId: auth.tenantId }
+
+    // Master line matches: product_id, or (when provided) product_variant_id.
+    // Resolve-key lines are intentionally not traversed here — their concrete
+    // product is only known at explosion time. See spec b §API / Risks.
+    const lineWhere: Record<string, unknown> = query.productVariantId
+      ? { $or: [{ productId: query.productId }, { productVariantId: query.productVariantId }] }
+      : { productId: query.productId }
 
     const lines = await findWithDecryption(
       em,
       BomLine,
-      {
-        materialId: query.materialId,
-        organizationId,
-        tenantId: auth.tenantId,
-        deletedAt: null,
-      },
+      { ...lineWhere, ...scope, deletedAt: null },
       {},
       { tenantId: auth.tenantId, organizationId },
     )
 
-    if (lines.length === 0) {
-      return NextResponse.json({ items: [] })
+    // BomLineVariant override matches: product_override_id, or (when provided)
+    // product_variant_override_id.
+    const overrideWhere: Record<string, unknown> = query.productVariantId
+      ? { $or: [{ productOverrideId: query.productId }, { productVariantOverrideId: query.productVariantId }] }
+      : { productOverrideId: query.productId }
+
+    const overrides = await findWithDecryption(
+      em,
+      BomLineVariant,
+      { ...overrideWhere, ...scope, deletedAt: null },
+      { populate: ['bomLine'] },
+      { tenantId: auth.tenantId, organizationId },
+    )
+
+    const headerIdSet = new Set<string>()
+
+    for (const line of lines) {
+      const ref = line.bomHeader
+      const id = typeof ref === 'object' && ref !== null && 'id' in ref
+        ? (ref as { id: string }).id
+        : String(ref)
+      if (id) headerIdSet.add(id)
     }
 
-    const headerIds = [...new Set(lines.map((line) => {
-      const ref = line.bomHeader
-      if (typeof ref === 'object' && ref !== null && 'id' in ref) return (ref as { id: string }).id
-      return String(ref)
-    }))]
-      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+    for (const override of overrides) {
+      const lineRef = override.bomLine
+      const line = typeof lineRef === 'object' && lineRef !== null ? lineRef as BomLine : null
+      if (!line) continue
+      const headerRef = line.bomHeader
+      const id = typeof headerRef === 'object' && headerRef !== null && 'id' in headerRef
+        ? (headerRef as { id: string }).id
+        : String(headerRef)
+      if (id) headerIdSet.add(id)
+    }
 
-    if (headerIds.length === 0) {
+    if (headerIdSet.size === 0) {
       return NextResponse.json({ items: [] })
     }
 
@@ -71,9 +99,8 @@ export async function GET(req: Request) {
       em,
       BomHeader,
       {
-        id: { $in: headerIds },
-        organizationId,
-        tenantId: auth.tenantId,
+        id: { $in: [...headerIdSet] },
+        ...scope,
         deletedAt: null,
       },
       {},
@@ -112,10 +139,15 @@ const whereUsedResponseSchema = z.object({
 
 export const openApi: OpenApiRouteDoc = {
   tag: 'Manufacturing BOM',
-  summary: 'Where-used query for a material',
+  summary: 'Where-used query for a Product or ProductVariant',
   methods: {
     GET: {
-      summary: 'Find all BOMs that reference a given material',
+      summary: 'Find all BOMs that reference a given Product or ProductVariant',
+      description:
+        'Matches on the master line\'s product_id / product_variant_id and on BomLineVariant\'s ' +
+        'product_override_id / product_variant_override_id. `productVariantId` is optional — when omitted, ' +
+        'matches at Product level only. Dynamic (`product_resolve_key`) lines are not traversed — their ' +
+        'concrete product is only known at explosion time (see spec b Risks; snapshot-aware variant deferred).',
       query: querySchema,
       responses: [
         { status: 200, description: 'Where-used results', schema: whereUsedResponseSchema },

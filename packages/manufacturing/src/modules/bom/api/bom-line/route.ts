@@ -22,7 +22,9 @@ const listSchema = z
     page: z.coerce.number().min(1).default(1),
     pageSize: z.coerce.number().min(1).max(100).default(50),
     bomHeaderId: z.string().uuid().optional(),
-    materialId: z.string().uuid().optional(),
+    productId: z.string().uuid().optional(),
+    productVariantId: z.string().uuid().optional(),
+    productResolveKey: z.string().optional(),
     ids: z.string().optional(),
     sortField: z.string().optional(),
     sortDir: z.enum(['asc', 'desc']).optional(),
@@ -44,7 +46,8 @@ const crud = makeCrudRoute({
     entityId: 'bom:bom_line',
     fields: [
       'id', 'organization_id', 'tenant_id', 'bom_header_id', 'line_type',
-      'material_id', 'child_bom_header_id', 'net_quantity', 'gross_quantity',
+      'product_id', 'product_variant_id', 'product_resolve_key',
+      'child_bom_header_id', 'net_quantity', 'gross_quantity',
       'scrap_percentage', 'uom_id', 'variant_condition', 'operation_template_id',
       'sort_order', 'valid_from', 'valid_to', 'is_consumable', 'notes',
       'created_at', 'updated_at',
@@ -57,7 +60,9 @@ const crud = makeCrudRoute({
     buildFilters: async (query) => {
       const filters: Record<string, unknown> = {}
       if (query.bomHeaderId) filters.bom_header_id = { $eq: query.bomHeaderId }
-      if (query.materialId) filters.material_id = { $eq: query.materialId }
+      if (query.productId) filters.product_id = { $eq: query.productId }
+      if (query.productVariantId) filters.product_variant_id = { $eq: query.productVariantId }
+      if (query.productResolveKey) filters.product_resolve_key = { $eq: query.productResolveKey }
       if (typeof query.ids === 'string' && query.ids.trim().length > 0) {
         const ids = query.ids.split(',').map((v: string) => v.trim()).filter((v: string) => v.length > 0)
         if (ids.length > 0) filters.id = { $in: ids }
@@ -109,7 +114,9 @@ const listItemSchema = z.object({
   tenant_id: z.string().uuid().nullable().optional(),
   bom_header_id: z.string().uuid().nullable().optional(),
   line_type: z.string().nullable().optional(),
-  material_id: z.string().uuid().nullable().optional(),
+  product_id: z.string().uuid().nullable().optional(),
+  product_variant_id: z.string().uuid().nullable().optional(),
+  product_resolve_key: z.string().nullable().optional(),
   child_bom_header_id: z.string().uuid().nullable().optional(),
   net_quantity: z.string().nullable().optional(),
   gross_quantity: z.string().nullable().optional(),

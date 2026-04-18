@@ -21,7 +21,8 @@ type BLVSnapshot = {
   variantId: string | null
   variantCondition: Record<string, unknown> | null
   quantityOverride: string | null
-  materialOverrideId: string | null
+  productOverrideId: string | null
+  productVariantOverrideId: string | null
   unitOverrideId: string | null
   notes: string | null
 }
@@ -37,7 +38,8 @@ function snapshotBLV(record: BomLineVariant): BLVSnapshot {
     variantId: record.variantId ?? null,
     variantCondition: record.variantCondition ?? null,
     quantityOverride: record.quantityOverride ?? null,
-    materialOverrideId: record.materialOverrideId ?? null,
+    productOverrideId: record.productOverrideId ?? null,
+    productVariantOverrideId: record.productVariantOverrideId ?? null,
     unitOverrideId: record.unitOverrideId ?? null,
     notes: record.notes ?? null,
   }
@@ -58,7 +60,8 @@ const createBLVCommand: CommandHandler<BomLineVariantCreateInput, { bomLineVaria
       variantId: parsed.variantId ?? null,
       variantCondition: parsed.variantCondition ?? null,
       quantityOverride: parsed.quantityOverride ?? null,
-      materialOverrideId: parsed.materialOverrideId ?? null,
+      productOverrideId: parsed.productOverrideId ?? null,
+      productVariantOverrideId: parsed.productVariantOverrideId ?? null,
       unitOverrideId: parsed.unitOverrideId ?? null,
       notes: parsed.notes ?? null,
     })
@@ -129,7 +132,9 @@ const updateBLVCommand: CommandHandler<BomLineVariantUpdateInput, { bomLineVaria
     }
 
     const allChanges = buildChanges(record as unknown as Record<string, unknown>, parsed, [
-      'variantId', 'variantCondition', 'quantityOverride', 'materialOverrideId', 'unitOverrideId', 'notes',
+      'variantId', 'variantCondition', 'quantityOverride',
+      'productOverrideId', 'productVariantOverrideId',
+      'unitOverrideId', 'notes',
     ])
     const changes = Object.fromEntries(
       Object.entries(allChanges).filter(([, c]) => c.to !== undefined),
@@ -191,7 +196,8 @@ const updateBLVCommand: CommandHandler<BomLineVariantUpdateInput, { bomLineVaria
       variantId: before.variantId,
       variantCondition: before.variantCondition,
       quantityOverride: before.quantityOverride,
-      materialOverrideId: before.materialOverrideId,
+      productOverrideId: before.productOverrideId,
+      productVariantOverrideId: before.productVariantOverrideId,
       unitOverrideId: before.unitOverrideId,
       notes: before.notes,
       updatedAt: new Date(),

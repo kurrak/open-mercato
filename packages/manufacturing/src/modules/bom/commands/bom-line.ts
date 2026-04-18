@@ -32,7 +32,9 @@ type BomLineSnapshot = {
   tenantId: string
   bomHeaderId: string
   lineType: string
-  materialId: string | null
+  productId: string | null
+  productVariantId: string | null
+  productResolveKey: string | null
   childBomHeaderId: string | null
   netQuantity: string | null
   grossQuantity: string | null
@@ -62,7 +64,9 @@ function snapshotBomLine(record: BomLine): BomLineSnapshot {
     tenantId: record.tenantId,
     bomHeaderId: extractBomHeaderId(record),
     lineType: record.lineType,
-    materialId: record.materialId ?? null,
+    productId: record.productId ?? null,
+    productVariantId: record.productVariantId ?? null,
+    productResolveKey: record.productResolveKey ?? null,
     childBomHeaderId: record.childBomHeaderId ?? null,
     netQuantity: record.netQuantity ?? null,
     grossQuantity: record.grossQuantity ?? null,
@@ -115,7 +119,9 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
       tenantId: parsed.tenantId,
       bomHeader,
       lineType: parsed.lineType ?? 'material',
-      materialId: parsed.materialId ?? null,
+      productId: parsed.productId ?? null,
+      productVariantId: parsed.productVariantId ?? null,
+      productResolveKey: parsed.productResolveKey ?? null,
       childBomHeaderId: parsed.childBomHeaderId ?? null,
       netQuantity: parsed.netQuantity ?? null,
       grossQuantity: parsed.grossQuantity ?? null,
@@ -201,7 +207,8 @@ const updateBomLineCommand: CommandHandler<BomLineUpdateInput, { bomLineId: stri
     }
 
     const allChanges = buildChanges(record as unknown as Record<string, unknown>, parsed, [
-      'lineType', 'materialId', 'childBomHeaderId', 'netQuantity', 'grossQuantity',
+      'lineType', 'productId', 'productVariantId', 'productResolveKey',
+      'childBomHeaderId', 'netQuantity', 'grossQuantity',
       'scrapPercentage', 'uomId', 'variantCondition', 'operationTemplateId',
       'sortOrder', 'validFrom', 'validTo', 'isConsumable', 'notes',
     ])
@@ -263,7 +270,9 @@ const updateBomLineCommand: CommandHandler<BomLineUpdateInput, { bomLineId: stri
     if (!record) return
     Object.assign(record, {
       lineType: before.lineType,
-      materialId: before.materialId,
+      productId: before.productId,
+      productVariantId: before.productVariantId,
+      productResolveKey: before.productResolveKey,
       childBomHeaderId: before.childBomHeaderId,
       netQuantity: before.netQuantity,
       grossQuantity: before.grossQuantity,

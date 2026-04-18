@@ -59,7 +59,9 @@ const lineTypes = ['material', 'semi_product'] as const
 export const bomLineCreateSchema = scopedSchema.extend({
   bomHeaderId: uuid(),
   lineType: z.enum(lineTypes).default('material'),
-  materialId: uuid().nullable().optional(),
+  productId: uuid().nullable().optional(),
+  productVariantId: uuid().nullable().optional(),
+  productResolveKey: z.string().trim().min(1).max(100).nullable().optional(),
   childBomHeaderId: uuid().nullable().optional(),
   netQuantity: numericString().nullable().optional(),
   grossQuantity: numericString().nullable().optional(),
@@ -78,7 +80,9 @@ export const bomLineUpdateSchema = z.object({ id: uuid() }).merge(
   scopedSchema
     .extend({
       lineType: z.enum(lineTypes),
-      materialId: uuid().nullable(),
+      productId: uuid().nullable(),
+      productVariantId: uuid().nullable(),
+      productResolveKey: z.string().trim().min(1).max(100).nullable(),
       childBomHeaderId: uuid().nullable(),
       netQuantity: numericString().nullable(),
       grossQuantity: numericString().nullable(),
@@ -107,7 +111,8 @@ const bomLineVariantBaseSchema = {
   variantId: uuid().nullable().optional(),
   variantCondition: variantConditionSchema.nullable().optional(),
   quantityOverride: numericString().nullable().optional(),
-  materialOverrideId: uuid().nullable().optional(),
+  productOverrideId: uuid().nullable().optional(),
+  productVariantOverrideId: uuid().nullable().optional(),
   unitOverrideId: uuid().nullable().optional(),
   notes: z.string().nullable().optional(),
 }
@@ -129,7 +134,8 @@ export const bomLineVariantUpdateSchema = z
         variantId: uuid().nullable(),
         variantCondition: variantConditionSchema.nullable(),
         quantityOverride: numericString().nullable(),
-        materialOverrideId: uuid().nullable(),
+        productOverrideId: uuid().nullable(),
+        productVariantOverrideId: uuid().nullable(),
         unitOverrideId: uuid().nullable(),
         notes: z.string().nullable(),
       })
