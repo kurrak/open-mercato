@@ -444,8 +444,8 @@ test.describe('D-UI-7: Delete with usage warning', () => {
 
       const bomLine = await createBomLineFixture(request, token, {
         bomHeaderId: bomHeader.id,
-        itemProductId,
-        quantity: 1,
+        productId: itemProductId,
+        netQuantity: 1,
         variantCondition: { seat_type: ['SD01N'] },
       })
       bomLineId = bomLine.id
