@@ -1,4 +1,20 @@
 {
   "bom.tab.placeholder": "Die BOM-Baumansicht wird hier implementiert. Verwalten Sie Materiallisten, Unterbaugruppen und Variantenbedingungen für dieses Produkt.",
-  "bom.tab.title": "Stückliste (BOM)"
+  "bom.tab.title": "Stückliste (BOM)",
+  "bom.variantCondition.editor.addRow": "Bedingung hinzufügen",
+  "bom.variantCondition.editor.boolean.false": "falsch",
+  "bom.variantCondition.editor.boolean.true": "wahr",
+  "bom.variantCondition.editor.empty": "Keine Bedingungen — Zeile ist immer aktiv.",
+  "bom.variantCondition.editor.emptyScopeHint": "Dieses Produkt hat keine Konfigurationsattribute — Schlüssel werden zur Laufzeit gegen das übergeordnete Produkt abgeglichen.",
+  "bom.variantCondition.editor.keyPlaceholder": "Attributschlüssel",
+  "bom.variantCondition.editor.numericPlaceholder": "z.B. 0-10",
+  "bom.variantCondition.editor.productPlaceholder": "Produkte wählen",
+  "bom.variantCondition.editor.productVariantPlaceholder": "Produktvarianten wählen",
+  "bom.variantCondition.editor.removeRow": "Bedingung entfernen",
+  "bom.variantCondition.editor.unknownKeyBadge": "Unbekannter Schlüssel",
+  "bom.variantCondition.editor.valuesPlaceholder": "Werte",
+  "bom.variantCondition.operator.in": "in",
+  "bom.variantCondition.operator.notIn": "NICHT",
+  "bom.variantCondition.operator.notInShort": "nicht in",
+  "bom.variantCondition.unknownKey.tooltip": "Unbekannter Schlüssel — zur Laufzeit gegen die Konfiguration des übergeordneten Produkts abgeglichen."
 }

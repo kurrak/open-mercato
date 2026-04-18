@@ -1,4 +1,20 @@
 {
   "bom.tab.placeholder": "La vista de árbol de la BOM se implementará aquí. Gestiona listas de materiales, subconjuntos y condiciones de variante para este producto.",
-  "bom.tab.title": "Lista de materiales (BOM)"
+  "bom.tab.title": "Lista de materiales (BOM)",
+  "bom.variantCondition.editor.addRow": "Añadir condición",
+  "bom.variantCondition.editor.boolean.false": "falso",
+  "bom.variantCondition.editor.boolean.true": "verdadero",
+  "bom.variantCondition.editor.empty": "Sin condiciones — la línea siempre está activa.",
+  "bom.variantCondition.editor.emptyScopeHint": "Este producto no tiene atributos de configuración — las claves se comparan con el producto maestro consumidor en tiempo de ejecución.",
+  "bom.variantCondition.editor.keyPlaceholder": "Clave del atributo",
+  "bom.variantCondition.editor.numericPlaceholder": "ej. 0-10",
+  "bom.variantCondition.editor.productPlaceholder": "Elige productos",
+  "bom.variantCondition.editor.productVariantPlaceholder": "Elige variantes de producto",
+  "bom.variantCondition.editor.removeRow": "Eliminar condición",
+  "bom.variantCondition.editor.unknownKeyBadge": "Clave desconocida",
+  "bom.variantCondition.editor.valuesPlaceholder": "Valores",
+  "bom.variantCondition.operator.in": "en",
+  "bom.variantCondition.operator.notIn": "NO",
+  "bom.variantCondition.operator.notInShort": "no en",
+  "bom.variantCondition.unknownKey.tooltip": "Clave desconocida — se comparará con la configuración del producto maestro consumidor en tiempo de ejecución."
 }

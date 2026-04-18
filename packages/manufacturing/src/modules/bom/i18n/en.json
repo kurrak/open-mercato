@@ -1,4 +1,20 @@
 {
   "bom.tab.placeholder": "BOM tree view will be implemented here. Manage material lists, sub-assemblies, and variant conditions for this product.",
-  "bom.tab.title": "Bill of Materials"
+  "bom.tab.title": "Bill of Materials",
+  "bom.variantCondition.editor.addRow": "Add condition",
+  "bom.variantCondition.editor.boolean.false": "false",
+  "bom.variantCondition.editor.boolean.true": "true",
+  "bom.variantCondition.editor.empty": "No conditions — line is always active.",
+  "bom.variantCondition.editor.emptyScopeHint": "This product has no configuration attributes — keys are matched against the consuming master at runtime.",
+  "bom.variantCondition.editor.keyPlaceholder": "Attribute key",
+  "bom.variantCondition.editor.numericPlaceholder": "e.g. 0-10",
+  "bom.variantCondition.editor.productPlaceholder": "Pick products",
+  "bom.variantCondition.editor.productVariantPlaceholder": "Pick product variants",
+  "bom.variantCondition.editor.removeRow": "Remove condition",
+  "bom.variantCondition.editor.unknownKeyBadge": "Unknown key",
+  "bom.variantCondition.editor.valuesPlaceholder": "Values",
+  "bom.variantCondition.operator.in": "in",
+  "bom.variantCondition.operator.notIn": "NOT",
+  "bom.variantCondition.operator.notInShort": "not in",
+  "bom.variantCondition.unknownKey.tooltip": "Unknown key — matched against the consuming master's configuration at runtime."
 }

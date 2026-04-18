@@ -1,4 +1,20 @@
 {
   "bom.tab.placeholder": "Widok drzewa BOM zostanie tu zaimplementowany. Zarządzaj listami materiałów, podzespołami i warunkami wariantów dla tego produktu.",
-  "bom.tab.title": "Lista materiałowa (BOM)"
+  "bom.tab.title": "Lista materiałowa (BOM)",
+  "bom.variantCondition.editor.addRow": "Dodaj warunek",
+  "bom.variantCondition.editor.boolean.false": "fałsz",
+  "bom.variantCondition.editor.boolean.true": "prawda",
+  "bom.variantCondition.editor.empty": "Brak warunków — linia jest zawsze aktywna.",
+  "bom.variantCondition.editor.emptyScopeHint": "Ten produkt nie ma atrybutów konfiguracji — klucze są dopasowywane do konfiguracji produktu nadrzędnego w czasie działania.",
+  "bom.variantCondition.editor.keyPlaceholder": "Klucz atrybutu",
+  "bom.variantCondition.editor.numericPlaceholder": "np. 0-10",
+  "bom.variantCondition.editor.productPlaceholder": "Wybierz produkty",
+  "bom.variantCondition.editor.productVariantPlaceholder": "Wybierz warianty produktu",
+  "bom.variantCondition.editor.removeRow": "Usuń warunek",
+  "bom.variantCondition.editor.unknownKeyBadge": "Nieznany klucz",
+  "bom.variantCondition.editor.valuesPlaceholder": "Wartości",
+  "bom.variantCondition.operator.in": "w",
+  "bom.variantCondition.operator.notIn": "NIE",
+  "bom.variantCondition.operator.notInShort": "nie w",
+  "bom.variantCondition.unknownKey.tooltip": "Nieznany klucz — dopasowywany do konfiguracji produktu nadrzędnego w czasie działania."
 }
