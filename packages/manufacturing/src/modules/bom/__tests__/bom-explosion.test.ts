@@ -6,6 +6,10 @@ import {
   type BomLineData,
   type BomLineVariantData,
   type ExplosionInput,
+  type ExplosionContext,
+  type ConfigAttributeData,
+  type CatalogProductData,
+  type CatalogProductVariantData,
 } from '../lib/bom-explosion'
 
 // ---------------------------------------------------------------------------
@@ -76,6 +80,26 @@ function defaultInput(bomHeaderId: string, overrides?: Partial<ExplosionInput>):
     effectiveDate: new Date('2026-06-01'),
     maxDepth: 10,
     ...overrides,
+  }
+}
+
+function emptyContext(): ExplosionContext {
+  return {
+    configAttributesByKey: new Map(),
+    catalogProducts: new Map(),
+    catalogProductVariants: new Map(),
+  }
+}
+
+function makeContext(overrides?: {
+  configAttributes?: ConfigAttributeData[]
+  catalogProducts?: CatalogProductData[]
+  catalogProductVariants?: CatalogProductVariantData[]
+}): ExplosionContext {
+  return {
+    configAttributesByKey: new Map((overrides?.configAttributes ?? []).map((a) => [a.key, a])),
+    catalogProducts: new Map((overrides?.catalogProducts ?? []).map((p) => [p.id, p])),
+    catalogProductVariants: new Map((overrides?.catalogProductVariants ?? []).map((v) => [v.id, v])),
   }
 }
 
@@ -155,7 +179,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '1', uomId: 'uom-m', sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0].productId).toBe('mat-1')
@@ -172,7 +196,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '3' }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].productId).toBe('mat-2')
@@ -182,7 +206,7 @@ describe('explodeBom', () => {
   it('handles empty BOM (no lines)', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const loader = createLoader(headers, [])
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(0)
     expect(result.warnings).toHaveLength(0)
@@ -192,7 +216,7 @@ describe('explodeBom', () => {
     const headers = [makeHeader({ id: 'bom-1', isActive: false })]
     const lines = [makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '1' })]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(0)
     expect(result.warnings.some((w) => w.includes('inactive'))).toBe(true)
@@ -205,7 +229,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-2', bomHeaderId: 'bom-1', productId: 'mat-2', netQuantity: '1', validFrom: new Date('2026-06-01'), validTo: new Date('2026-12-31'), sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-1', { effectiveDate: new Date('2026-06-15') }), loader)
+    const result = await explodeBom(defaultInput('bom-1', { effectiveDate: new Date('2026-06-15') }), loader, emptyContext())
 
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].productId).toBe('mat-2')
@@ -223,6 +247,7 @@ describe('explodeBom', () => {
     const result = await explodeBom(
       defaultInput('bom-1', { variantConditions: { seat_type: 'padded' } }),
       loader,
+      emptyContext(),
     )
 
     expect(result.lines).toHaveLength(2)
@@ -246,6 +271,7 @@ describe('explodeBom', () => {
     const result = await explodeBom(
       defaultInput('bom-1', { variantConditions: { cushion: 'yes' } }),
       loader,
+      emptyContext(),
     )
 
     expect(result.lines).toHaveLength(1)
@@ -269,6 +295,7 @@ describe('explodeBom', () => {
     const result = await explodeBom(
       defaultInput('bom-1', { variantConditions: { grade: 'premium' } }),
       loader,
+      emptyContext(),
     )
 
     expect(result.lines).toHaveLength(1)
@@ -286,7 +313,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-screws', bomHeaderId: 'bom-phantom', productId: 'mat-screws', netQuantity: '20', sortOrder: 1 }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-parent'), loader)
+    const result = await explodeBom(defaultInput('bom-parent'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0].productId).toBe('mat-wood')
@@ -305,7 +332,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-foam', bomHeaderId: 'bom-child', productId: 'mat-foam', netQuantity: '2' }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-parent'), loader)
+    const result = await explodeBom(defaultInput('bom-parent'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(2)
     expect(result.lines[0].level).toBe(0)
@@ -327,7 +354,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'l2-mat', bomHeaderId: 'bom-L2', productId: 'mat-raw', netQuantity: '10' }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-L0'), loader)
+    const result = await explodeBom(defaultInput('bom-L0'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(3)
     expect(result.depth).toBe(2)
@@ -343,7 +370,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-B', bomHeaderId: 'bom-B', lineType: 'semi_product', childBomHeaderId: 'bom-A', productId: 'y', netQuantity: '1' }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-A'), loader)
+    const result = await explodeBom(defaultInput('bom-A'), loader, emptyContext())
 
     expect(result.warnings.some((w) => w.includes('Circular reference') || w.includes('already visited'))).toBe(true)
   })
@@ -360,7 +387,7 @@ describe('explodeBom', () => {
     lines.push(makeLine({ id: 'line-leaf', bomHeaderId: 'bom-4', productId: 'mat-leaf', netQuantity: '1' }))
 
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-0', { maxDepth: 2 }), loader)
+    const result = await explodeBom(defaultInput('bom-0', { maxDepth: 2 }), loader, emptyContext())
 
     expect(result.warnings.some((w) => w.includes('Max depth'))).toBe(true)
   })
@@ -371,7 +398,7 @@ describe('explodeBom', () => {
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-1', netQuantity: '10', scrapPercentage: '10' }),
     ]
     const loader = createLoader(headers, lines)
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].quantity).toBe(10)
@@ -381,7 +408,7 @@ describe('explodeBom', () => {
 
   it('warns when BOM header not found', async () => {
     const loader = createLoader([], [])
-    const result = await explodeBom(defaultInput('nonexistent'), loader)
+    const result = await explodeBom(defaultInput('nonexistent'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(0)
     expect(result.warnings.some((w) => w.includes('not found'))).toBe(true)
@@ -415,6 +442,7 @@ describe('explodeBom', () => {
     const r1 = await explodeBom(
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: 'standard' } }),
       loader,
+      emptyContext(),
     )
     expect(r1.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2'])
     expect(r1.lines[1].isPhantomPassThrough).toBe(true)
@@ -424,6 +452,7 @@ describe('explodeBom', () => {
     const r2 = await explodeBom(
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-03-15'), variantConditions: { duty: 'heavy' } }),
       loader,
+      emptyContext(),
     )
     expect(r2.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v1', 'mat-steel-bar'])
 
@@ -431,6 +460,7 @@ describe('explodeBom', () => {
     const r3 = await explodeBom(
       defaultInput('bom-sofa', { effectiveDate: new Date('2026-06-15'), variantConditions: { duty: 'heavy' } }),
       loader,
+      emptyContext(),
     )
     expect(r3.lines.map((l) => l.productId)).toEqual(['mat-fabric', 'mat-wood', 'mat-screws-v2', 'mat-steel-bar'])
   })
@@ -456,6 +486,7 @@ describe('explodeBom', () => {
     const r1 = await explodeBom(
       defaultInput('bom-seat', { variantConditions: { seat_type: 'padded' } }),
       loader,
+      emptyContext(),
     )
     expect(r1.lines).toHaveLength(2)
     expect(r1.lines[1].quantity).toBe(2)
@@ -464,6 +495,7 @@ describe('explodeBom', () => {
     const r2 = await explodeBom(
       defaultInput('bom-seat', { variantConditions: { seat_type: 'xl_padded' } }),
       loader,
+      emptyContext(),
     )
     expect(r2.lines).toHaveLength(2)
     expect(r2.lines[1].quantity).toBe(4)
@@ -472,6 +504,7 @@ describe('explodeBom', () => {
     const r3 = await explodeBom(
       defaultInput('bom-seat', { variantConditions: { seat_type: 'flat' } }),
       loader,
+      emptyContext(),
     )
     expect(r3.lines).toHaveLength(1)
     expect(r3.lines[0].productId).toBe('mat-plywood')
@@ -503,7 +536,7 @@ describe('explodeBom', () => {
     // and by variantId for variant_based. Since we don't pass variantId in the
     // standard input, variant_id-based overrides don't match unless the caller
     // pre-resolves. This test verifies the no-match path (base values used).
-    const result = await explodeBom(defaultInput('bom-1'), loader)
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].quantity).toBe(10)
     expect(result.lines[0].uomId).toBe('uom-m')
@@ -534,6 +567,7 @@ describe('explodeBom', () => {
     const rSmall = await explodeBom(
       defaultInput('bom-chair', { variantConditions: { back_size: 'small' } }),
       loader,
+      emptyContext(),
     )
     expect(rSmall.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-s', 'mat-wood-thin'])
 
@@ -541,7 +575,347 @@ describe('explodeBom', () => {
     const rLarge = await explodeBom(
       defaultInput('bom-chair', { variantConditions: { back_size: 'large' } }),
       loader,
+      emptyContext(),
     )
     expect(rLarge.lines.map((l) => l.productId)).toEqual(['mat-seat', 'prod-back-l', 'mat-wood-thick', 'mat-foam'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tests: Step 2 — Type-directed dynamic product resolution
+// ---------------------------------------------------------------------------
+
+describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () => {
+  it("resolves a 'product' attribute → sets productId, leaves productVariantId null", async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({
+        id: 'line-1', bomHeaderId: 'bom-1',
+        productResolveKey: 'legs', netQuantity: '4', uomId: 'uom-szt',
+      }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'legs', attributeType: 'product' }],
+      catalogProducts: [{ id: 'prod-leg-A' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { legs: 'prod-leg-A' } }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('prod-leg-A')
+    expect(result.lines[0].productVariantId).toBeNull()
+    expect(result.warnings).toHaveLength(0)
+  })
+
+  it("resolves a 'product_variant' attribute → sets productId from variant.productId AND productVariantId", async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({
+        id: 'line-1', bomHeaderId: 'bom-1',
+        productResolveKey: 'fabric', netQuantity: '6', uomId: 'uom-m',
+      }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product_variant' }],
+      catalogProductVariants: [{ id: 'variant-soro-61', productId: 'prod-soro-collection' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { fabric: 'variant-soro-61' } }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('prod-soro-collection')
+    expect(result.lines[0].productVariantId).toBe('variant-soro-61')
+    expect(result.warnings).toHaveLength(0)
+  })
+
+  it('warns and skips when resolve key is missing from the configAttributesByKey map', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'unknown_key', netQuantity: '1' }),
+    ]
+    const loader = createLoader(headers, lines)
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { unknown_key: 'some-uuid' } }),
+      loader,
+      emptyContext(),
+    )
+
+    expect(result.lines).toHaveLength(0)
+    expect(result.warnings.some((w) => w.includes("resolve key 'unknown_key' has no matching ConfigAttribute"))).toBe(true)
+    // B4 preserves the legacy "skip null productId" warning — B5 flips to emit.
+    expect(result.warnings.some((w) => w.includes('null product_id — skipped'))).toBe(true)
+  })
+
+  it('warns and skips when variantConditions omits the resolve key', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '2' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product_variant' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: {} }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(0)
+    expect(result.warnings.some((w) => w.includes("resolve key 'fabric' missing from variantConditions"))).toBe(true)
+  })
+
+  it('warns and skips when the attribute_type cannot drive dynamic resolution (enum)', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'seat_type', netQuantity: '1' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'seat_type', attributeType: 'enum' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { seat_type: 'SD01' } }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(0)
+    expect(result.warnings.some((w) => w.includes("attribute_type 'enum' for key 'seat_type' does not drive dynamic product resolution"))).toBe(true)
+  })
+
+  it("warns and skips when 'product' UUID is not present in catalogProducts", async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'legs', netQuantity: '4' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'legs', attributeType: 'product' }],
+      // catalogProducts intentionally empty: simulates a stale/deleted row
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { legs: 'orphan-uuid' } }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(0)
+    expect(result.warnings.some((w) => w.includes("product 'orphan-uuid' for key 'legs' not found in catalog"))).toBe(true)
+  })
+
+  it("warns and skips when 'product_variant' UUID is not present in catalogProductVariants", async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '1' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product_variant' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { fabric: 'orphan-variant-uuid' } }),
+      loader,
+      context,
+    )
+
+    expect(result.lines).toHaveLength(0)
+    expect(result.warnings.some((w) => w.includes("product variant 'orphan-variant-uuid' for key 'fabric' not found in catalog"))).toBe(true)
+  })
+
+  it('Step 3 override discards a Step 2 failure warning when it fills in productId', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      // Dynamic line that would fail Step 2 (no attribute defined), but…
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '1' }),
+    ]
+    const variants = [
+      // …has an override that fires and supplies a product.
+      makeVariant({
+        id: 'v-1', bomLineId: 'line-1',
+        variantCondition: { trim: ['heavy'] },
+        productOverrideId: 'mat-heavy-duty',
+      }),
+    ]
+    const loader = createLoader(headers, lines, variants)
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { trim: 'heavy' } }),
+      loader,
+      emptyContext(),
+    )
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('mat-heavy-duty')
+    // Step 2 warning was discarded because Step 3 saved the line; no stale
+    // "resolve key has no matching ConfigAttribute" warning should appear.
+    expect(result.warnings.some((w) => w.includes('has no matching ConfigAttribute'))).toBe(false)
+    expect(result.warnings).toHaveLength(0)
+  })
+
+  it('Step 3 override pair also populates productVariantId on the output', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-standard', netQuantity: '1' }),
+    ]
+    const variants = [
+      makeVariant({
+        id: 'v-1', bomLineId: 'line-1',
+        variantCondition: { grade: ['premium'] },
+        productOverrideId: 'mat-premium',
+        productVariantOverrideId: 'variant-premium-black',
+      }),
+    ]
+    const loader = createLoader(headers, lines, variants)
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { grade: 'premium' } }),
+      loader,
+      emptyContext(),
+    )
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('mat-premium')
+    expect(result.lines[0].productVariantId).toBe('variant-premium-black')
+  })
+
+  it('carries static productVariantId through when no resolve key and no override matches', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({
+        id: 'line-1', bomHeaderId: 'bom-1',
+        productId: 'prod-soro', productVariantId: 'variant-soro-61',
+        netQuantity: '3',
+      }),
+    ]
+    const loader = createLoader(headers, lines)
+
+    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('prod-soro')
+    expect(result.lines[0].productVariantId).toBe('variant-soro-61')
+  })
+
+  it('warns when a malformed override pair (variant-only) hits a matched row', async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-a', netQuantity: '1' }),
+    ]
+    const variants = [
+      makeVariant({
+        id: 'v-1', bomLineId: 'line-1',
+        variantCondition: { color: ['red'] },
+        productOverrideId: null,
+        productVariantOverrideId: 'variant-without-product',
+      }),
+    ]
+    const loader = createLoader(headers, lines, variants)
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { color: 'red' } }),
+      loader,
+      emptyContext(),
+    )
+
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBe('mat-a') // starting line carried through
+    expect(result.warnings.some((w) => w.includes('product_variant_override_id without product_override_id'))).toBe(true)
+  })
+
+  it('defense-in-depth: rejects a line carrying both product_id and product_resolve_key', async () => {
+    // B2 Zod prevents this at save time (spec b §BomLine Constraints). If a
+    // migration or direct-SQL write bypasses Zod, Step 2 must surface the
+    // inconsistency rather than silently overwriting the static product.
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({
+        id: 'line-bypass', bomHeaderId: 'bom-1',
+        productId: 'mat-static', productResolveKey: 'fabric', netQuantity: '1',
+      }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product' }],
+      catalogProducts: [{ id: 'prod-dynamic' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: { fabric: 'prod-dynamic' } }),
+      loader,
+      context,
+    )
+
+    // Even though variantConditions would resolve, the line is flagged as
+    // unresolved and skipped (B4 preserves skip-on-null).
+    expect(result.lines).toHaveLength(0)
+    expect(
+      result.warnings.some((w) =>
+        w.includes("carries both product_id and product_resolve_key")
+        && w.includes('Zod invariant bypassed'),
+      ),
+    ).toBe(true)
+  })
+
+  it('defense-in-depth: rejects product_resolve_key on a semi_product line', async () => {
+    // B2 Zod forbids resolve-key on semi_product (lineType scope rule).
+    // Bypass path should produce a dedicated warning and skip Step 2 entirely.
+    const headers = [
+      makeHeader({ id: 'bom-parent' }),
+      makeHeader({ id: 'bom-child' }),
+    ]
+    const lines = [
+      makeLine({
+        id: 'line-bypass', bomHeaderId: 'bom-parent',
+        lineType: 'semi_product', childBomHeaderId: 'bom-child',
+        productResolveKey: 'fabric', netQuantity: '1',
+      }),
+      makeLine({
+        id: 'line-child', bomHeaderId: 'bom-child',
+        productId: 'mat-foo', netQuantity: '2',
+      }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product' }],
+      catalogProducts: [{ id: 'prod-fabric' }],
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-parent', { variantConditions: { fabric: 'prod-fabric' } }),
+      loader,
+      context,
+    )
+
+    // The dedicated warning must be present.
+    expect(
+      result.warnings.some((w) =>
+        w.includes("product_resolve_key on 'semi_product' line violates spec"),
+      ),
+    ).toBe(true)
+    // The semi-product line itself IS emitted (with productId: null) —
+    // Step 4's semi-product branch does not apply the material-line
+    // skip-on-null rule. The dedicated warning is what signals the bypass.
+    const bypassLine = result.lines.find((l) => l.bomLineId === 'line-bypass')
+    expect(bypassLine).toBeDefined()
+    expect(bypassLine?.productId).toBeNull()
+    expect(bypassLine?.productVariantId).toBeNull()
+    // Child BOM's own material line still emits normally.
+    expect(result.lines.some((l) => l.productId === 'mat-foo')).toBe(true)
   })
 })
