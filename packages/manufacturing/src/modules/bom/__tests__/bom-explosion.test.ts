@@ -1,6 +1,7 @@
 import {
   explodeBom,
   matchVariantCondition,
+  warningsByLineId,
   type BomDataLoader,
   type BomHeaderData,
   type BomLineData,
@@ -189,7 +190,11 @@ describe('explodeBom', () => {
     expect(result.warnings).toHaveLength(0)
   })
 
-  it('skips lines with null productId and warns', async () => {
+  it('emits lines with null productId and attaches a keyed warning (B5 soft-error contract)', async () => {
+    // B5 flipped the old skip-on-null behavior: unresolved lines are now
+    // emitted with productId: null so the UI can surface them, with the
+    // reason attached as a structured warning keyed by bomLineId.
+    // Downstream planning consumers (MRP, WO, purchasing) filter these out.
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: null, netQuantity: '1' }),
@@ -198,9 +203,16 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].productId).toBe('mat-2')
-    expect(result.warnings).toContain('Line line-1 has null product_id — skipped')
+    expect(result.lines).toHaveLength(2)
+    const nullLine = result.lines.find((l) => l.bomLineId === 'line-1')
+    const resolvedLine = result.lines.find((l) => l.bomLineId === 'line-2')
+    expect(nullLine?.productId).toBeNull()
+    expect(resolvedLine?.productId).toBe('mat-2')
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes('null product_id'),
+      ),
+    ).toBe(true)
   })
 
   it('handles empty BOM (no lines)', async () => {
@@ -219,7 +231,7 @@ describe('explodeBom', () => {
     const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes('inactive'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('inactive'))).toBe(true)
   })
 
   it('filters lines by date-effective range', async () => {
@@ -372,7 +384,7 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-A'), loader, emptyContext())
 
-    expect(result.warnings.some((w) => w.includes('Circular reference') || w.includes('already visited'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('Circular reference') || w.message.includes('already visited'))).toBe(true)
   })
 
   it('respects max depth limit', async () => {
@@ -389,7 +401,7 @@ describe('explodeBom', () => {
     const loader = createLoader(headers, lines)
     const result = await explodeBom(defaultInput('bom-0', { maxDepth: 2 }), loader, emptyContext())
 
-    expect(result.warnings.some((w) => w.includes('Max depth'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('Max depth'))).toBe(true)
   })
 
   it('computes gross quantity with scrap percentage', async () => {
@@ -411,7 +423,7 @@ describe('explodeBom', () => {
     const result = await explodeBom(defaultInput('nonexistent'), loader, emptyContext())
 
     expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes('not found'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('not found'))).toBe(true)
   })
 
   // ---------------------------------------------------------------------------
@@ -651,13 +663,22 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       emptyContext(),
     )
 
-    expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes("resolve key 'unknown_key' has no matching ConfigAttribute"))).toBe(true)
-    // B4 preserves the legacy "skip null productId" warning — B5 flips to emit.
-    expect(result.warnings.some((w) => w.includes('null product_id — skipped'))).toBe(true)
+    // B5 emit-on-null: the line surfaces with productId null + a keyed warning.
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes("resolve key 'unknown_key' has no matching ConfigAttribute"),
+      ),
+    ).toBe(true)
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes('null product_id'),
+      ),
+    ).toBe(true)
   })
 
-  it('warns and skips when variantConditions omits the resolve key', async () => {
+  it('emits null-productId line when variantConditions omits the resolve key', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '2' }),
@@ -673,11 +694,16 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       context,
     )
 
-    expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes("resolve key 'fabric' missing from variantConditions"))).toBe(true)
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes("resolve key 'fabric' missing from variantConditions"),
+      ),
+    ).toBe(true)
   })
 
-  it('warns and skips when the attribute_type cannot drive dynamic resolution (enum)', async () => {
+  it('emits null-productId line when the attribute_type cannot drive dynamic resolution (enum)', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'seat_type', netQuantity: '1' }),
@@ -693,11 +719,16 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       context,
     )
 
-    expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes("attribute_type 'enum' for key 'seat_type' does not drive dynamic product resolution"))).toBe(true)
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes("attribute_type 'enum' for key 'seat_type' does not drive dynamic product resolution"),
+      ),
+    ).toBe(true)
   })
 
-  it("warns and skips when 'product' UUID is not present in catalogProducts", async () => {
+  it("emits null-productId line when 'product' UUID is not present in catalogProducts", async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'legs', netQuantity: '4' }),
@@ -714,11 +745,16 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       context,
     )
 
-    expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes("product 'orphan-uuid' for key 'legs' not found in catalog"))).toBe(true)
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes("product 'orphan-uuid' for key 'legs' not found in catalog"),
+      ),
+    ).toBe(true)
   })
 
-  it("warns and skips when 'product_variant' UUID is not present in catalogProductVariants", async () => {
+  it("emits null-productId line when 'product_variant' UUID is not present in catalogProductVariants", async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '1' }),
@@ -734,8 +770,13 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       context,
     )
 
-    expect(result.lines).toHaveLength(0)
-    expect(result.warnings.some((w) => w.includes("product variant 'orphan-variant-uuid' for key 'fabric' not found in catalog"))).toBe(true)
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
+    expect(
+      result.warnings.some(
+        (w) => w.bomLineId === 'line-1' && w.message.includes("product variant 'orphan-variant-uuid' for key 'fabric' not found in catalog"),
+      ),
+    ).toBe(true)
   })
 
   it('Step 3 override discards a Step 2 failure warning when it fills in productId', async () => {
@@ -764,7 +805,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
     expect(result.lines[0].productId).toBe('mat-heavy-duty')
     // Step 2 warning was discarded because Step 3 saved the line; no stale
     // "resolve key has no matching ConfigAttribute" warning should appear.
-    expect(result.warnings.some((w) => w.includes('has no matching ConfigAttribute'))).toBe(false)
+    expect(result.warnings.some((w) => w.message.includes('has no matching ConfigAttribute'))).toBe(false)
     expect(result.warnings).toHaveLength(0)
   })
 
@@ -835,7 +876,7 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
 
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].productId).toBe('mat-a') // starting line carried through
-    expect(result.warnings.some((w) => w.includes('product_variant_override_id without product_override_id'))).toBe(true)
+    expect(result.warnings.some((w) => w.message.includes('product_variant_override_id without product_override_id'))).toBe(true)
   })
 
   it('defense-in-depth: rejects a line carrying both product_id and product_resolve_key', async () => {
@@ -862,12 +903,15 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
     )
 
     // Even though variantConditions would resolve, the line is flagged as
-    // unresolved and skipped (B4 preserves skip-on-null).
-    expect(result.lines).toHaveLength(0)
+    // unresolved and emitted with productId: null (B5 emit-on-null).
+    expect(result.lines).toHaveLength(1)
+    expect(result.lines[0].productId).toBeNull()
     expect(
-      result.warnings.some((w) =>
-        w.includes("carries both product_id and product_resolve_key")
-        && w.includes('Zod invariant bypassed'),
+      result.warnings.some(
+        (w) =>
+          w.bomLineId === 'line-bypass' &&
+          w.message.includes('carries both product_id and product_resolve_key') &&
+          w.message.includes('Zod invariant bypassed'),
       ),
     ).toBe(true)
   })
@@ -902,10 +946,12 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
       context,
     )
 
-    // The dedicated warning must be present.
+    // The dedicated warning must be present and keyed to the bypass line.
     expect(
-      result.warnings.some((w) =>
-        w.includes("product_resolve_key on 'semi_product' line violates spec"),
+      result.warnings.some(
+        (w) =>
+          w.bomLineId === 'line-bypass' &&
+          w.message.includes("product_resolve_key on 'semi_product' line violates spec"),
       ),
     ).toBe(true)
     // The semi-product line itself IS emitted (with productId: null) —
@@ -917,5 +963,58 @@ describe('explodeBom — Step 2 (type-directed dynamic product resolution)', () 
     expect(bypassLine?.productVariantId).toBeNull()
     // Child BOM's own material line still emits normally.
     expect(result.lines.some((l) => l.productId === 'mat-foo')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Tests: Warning shape + consumer helpers (B5)
+// ---------------------------------------------------------------------------
+
+describe('explodeBom — structured warnings (B5)', () => {
+  it('emits graph-level warnings with bomLineId: null', async () => {
+    // Max depth is a graph-level condition, not tied to any specific line.
+    const headers = [
+      makeHeader({ id: 'bom-0' }),
+      makeHeader({ id: 'bom-1' }),
+      makeHeader({ id: 'bom-2' }),
+    ]
+    const lines = [
+      makeLine({ id: 'l0', bomHeaderId: 'bom-0', lineType: 'semi_product', childBomHeaderId: 'bom-1', netQuantity: '1' }),
+      makeLine({ id: 'l1', bomHeaderId: 'bom-1', lineType: 'semi_product', childBomHeaderId: 'bom-2', netQuantity: '1' }),
+      makeLine({ id: 'l2', bomHeaderId: 'bom-2', productId: 'mat', netQuantity: '1' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const result = await explodeBom(defaultInput('bom-0', { maxDepth: 1 }), loader, emptyContext())
+
+    const depthWarning = result.warnings.find((w) => w.message.includes('Max depth'))
+    expect(depthWarning).toBeDefined()
+    expect(depthWarning?.bomLineId).toBeNull()
+  })
+
+  it("warningsByLineId() groups line-specific warnings and drops graph-level ones", async () => {
+    const headers = [makeHeader({ id: 'bom-1' })]
+    const lines = [
+      makeLine({ id: 'line-a', bomHeaderId: 'bom-1', productResolveKey: 'fabric', netQuantity: '1' }),
+      makeLine({ id: 'line-b', bomHeaderId: 'bom-1', productId: 'mat-b', netQuantity: '1' }),
+    ]
+    const loader = createLoader(headers, lines)
+    const context = makeContext({
+      configAttributes: [{ key: 'fabric', attributeType: 'product_variant' }],
+      // variantConditions missing 'fabric' — Step 2 warns for line-a only.
+    })
+
+    const result = await explodeBom(
+      defaultInput('bom-1', { variantConditions: {} }),
+      loader,
+      context,
+    )
+
+    const grouped = warningsByLineId(result)
+    // line-a has two line-specific warnings: the Step 2 missing-key + the
+    // "emitted with null product_id" reason; both keyed to line-a.
+    expect(grouped.get('line-a')?.length).toBeGreaterThanOrEqual(1)
+    expect(grouped.get('line-a')?.some((m) => m.includes("resolve key 'fabric' missing"))).toBe(true)
+    // line-b resolved cleanly and carries no warnings.
+    expect(grouped.get('line-b')).toBeUndefined()
   })
 })

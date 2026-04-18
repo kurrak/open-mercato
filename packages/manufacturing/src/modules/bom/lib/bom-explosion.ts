@@ -137,9 +137,25 @@ export type ExplosionLine = {
   isConsumable: boolean
 }
 
+// Structured explosion warning (spec b B5 soft-error contract).
+//
+// `bomLineId` identifies the owning BomLine when the warning is line-specific
+// (failed dynamic resolution, malformed override, null product, etc.). Graph-
+// level warnings that aren't tied to a particular line (max depth exceeded,
+// circular reference, BOM header not found, inactive BOM, child BOM missing
+// for a semi_product reference) carry `bomLineId: null`.
+//
+// Consumers (MRP, work orders, purchasing) can use `warningsByLineId(result)`
+// to fetch all warnings for a specific emitted row; UI renderers can surface
+// line-specific warnings next to muted-styled null-productId rows.
+export type ExplosionWarning = {
+  bomLineId: string | null
+  message: string
+}
+
 export type ExplosionResult = {
   lines: ExplosionLine[]
-  warnings: string[]
+  warnings: ExplosionWarning[]
   depth: number
 }
 
@@ -171,10 +187,12 @@ function isDateEffective(line: BomLineData, effectiveDate: Date): boolean {
 // Step 2: Type-Directed Dynamic Product Resolution
 // ---------------------------------------------------------------------------
 
-// Returns the resolved (productId, productVariantId) pair when the line has a
-// product_resolve_key set, plus an optional warning describing why resolution
-// failed. The caller applies the pair and may discard the warning if Step 3
-// (override) later fills in productId.
+// Returns the resolved (productId, productVariantId) pair when the line has
+// a product_resolve_key set, plus an optional warning message describing why
+// resolution failed. The caller attaches bomLineId when pushing the warning
+// into the structured result — messages here omit the "Line <id>:" prefix
+// that the old string-warnings shape used. The caller may discard the warning
+// if Step 3 (override) later fills in productId.
 function resolveFromResolveKey(
   line: BomLineData,
   inputConditions: Record<string, string>,
@@ -194,7 +212,7 @@ function resolveFromResolveKey(
     return {
       productId: null,
       productVariantId: null,
-      warning: `Line ${line.id}: product_resolve_key on '${line.lineType}' line violates spec — Zod invariant bypassed; ignoring resolve key`,
+      warning: `product_resolve_key on '${line.lineType}' line violates spec — Zod invariant bypassed; ignoring resolve key`,
     }
   }
 
@@ -205,7 +223,7 @@ function resolveFromResolveKey(
     return {
       productId: null,
       productVariantId: null,
-      warning: `Line ${line.id}: carries both product_id and product_resolve_key — Zod invariant bypassed; treating as unresolved`,
+      warning: `carries both product_id and product_resolve_key — Zod invariant bypassed; treating as unresolved`,
     }
   }
 
@@ -214,7 +232,7 @@ function resolveFromResolveKey(
     return {
       productId: null,
       productVariantId: null,
-      warning: `Line ${line.id}: resolve key '${key}' has no matching ConfigAttribute on the master product`,
+      warning: `resolve key '${key}' has no matching ConfigAttribute on the master product`,
     }
   }
 
@@ -223,7 +241,7 @@ function resolveFromResolveKey(
     return {
       productId: null,
       productVariantId: null,
-      warning: `Line ${line.id}: resolve key '${key}' missing from variantConditions`,
+      warning: `resolve key '${key}' missing from variantConditions`,
     }
   }
 
@@ -233,7 +251,7 @@ function resolveFromResolveKey(
       return {
         productId: null,
         productVariantId: null,
-        warning: `Line ${line.id}: product '${val}' for key '${key}' not found in catalog`,
+        warning: `product '${val}' for key '${key}' not found in catalog`,
       }
     }
     return { productId: product.id, productVariantId: null, warning: null }
@@ -245,7 +263,7 @@ function resolveFromResolveKey(
       return {
         productId: null,
         productVariantId: null,
-        warning: `Line ${line.id}: product variant '${val}' for key '${key}' not found in catalog`,
+        warning: `product variant '${val}' for key '${key}' not found in catalog`,
       }
     }
     return { productId: variant.productId, productVariantId: variant.id, warning: null }
@@ -255,7 +273,7 @@ function resolveFromResolveKey(
   return {
     productId: null,
     productVariantId: null,
-    warning: `Line ${line.id}: attribute_type '${attr.attributeType}' for key '${key}' does not drive dynamic product resolution`,
+    warning: `attribute_type '${attr.attributeType}' for key '${key}' does not drive dynamic product resolution`,
   }
 }
 
@@ -317,7 +335,7 @@ function applyLineVariantOverrides(
       } else if (variant.productVariantOverrideId) {
         // Malformed pair: variant override without product override. Zod
         // should have caught this; preserve the starting pair and flag.
-        warning = `Line ${line.id}: BomLineVariant ${variant.id} has product_variant_override_id without product_override_id — override skipped`
+        warning = `BomLineVariant ${variant.id} has product_variant_override_id without product_override_id — override skipped`
       }
       if (variant.quantityOverride) quantity = variant.quantityOverride
       if (variant.unitOverrideId) uomId = variant.unitOverrideId
@@ -349,14 +367,26 @@ export async function explodeBom(
   const result: ExplosionResult = { lines: [], warnings: [], depth: 0 }
   const visited = new Set<string>()
 
+  // Graph-level warnings (max depth, cycle, BOM not found / inactive)
+  // carry bomLineId: null — they aren't tied to a specific emitted row.
+  // Line-specific warnings (Step 2 / Step 3 failures, child BOM missing
+  // for a semi-product reference, null-productId emit) carry the owning
+  // line.id so UI renderers + warningsByLineId can route them.
+  function warnGraph(message: string): void {
+    result.warnings.push({ bomLineId: null, message })
+  }
+  function warnLine(bomLineId: string, message: string): void {
+    result.warnings.push({ bomLineId, message })
+  }
+
   async function recurse(bomHeaderId: string, level: number, isPhantomContext: boolean): Promise<void> {
     if (level > input.maxDepth) {
-      result.warnings.push(`Max depth (${input.maxDepth}) exceeded at BOM ${bomHeaderId}`)
+      warnGraph(`Max depth (${input.maxDepth}) exceeded at BOM ${bomHeaderId}`)
       return
     }
 
     if (visited.has(bomHeaderId)) {
-      result.warnings.push(`Circular reference detected: BOM ${bomHeaderId} already visited`)
+      warnGraph(`Circular reference detected: BOM ${bomHeaderId} already visited`)
       return
     }
     visited.add(bomHeaderId)
@@ -365,13 +395,13 @@ export async function explodeBom(
 
     const header = await loader.loadHeader(bomHeaderId)
     if (!header) {
-      result.warnings.push(`BOM header ${bomHeaderId} not found`)
+      warnGraph(`BOM header ${bomHeaderId} not found`)
       visited.delete(bomHeaderId)
       return
     }
 
     if (!header.isActive) {
-      result.warnings.push(`BOM ${bomHeaderId} (${header.productId}) is inactive — skipped`)
+      warnGraph(`BOM ${bomHeaderId} (${header.productId}) is inactive — skipped`)
       visited.delete(bomHeaderId)
       return
     }
@@ -395,8 +425,8 @@ export async function explodeBom(
       // fall through unchanged — resolveFromResolveKey returns the line's
       // static pair with no warning.
       const step2 = resolveFromResolveKey(line, input.variantConditions, context)
-      const pendingWarnings: string[] = []
-      if (step2.warning) pendingWarnings.push(step2.warning)
+      const pendingMessages: string[] = []
+      if (step2.warning) pendingMessages.push(step2.warning)
 
       // Step 3: BomLineVariant override (pair semantics).
       const overrides = applyLineVariantOverrides(
@@ -405,13 +435,18 @@ export async function explodeBom(
         input.variantConditions,
         { productId: step2.productId, productVariantId: step2.productVariantId },
       )
-      if (overrides.warning) pendingWarnings.push(overrides.warning)
+      if (overrides.warning) pendingMessages.push(overrides.warning)
 
       // If Step 3 filled in productId, Step 2's failure warning is stale —
       // discard it. The override-pair malformed warning (if any) is kept.
       if (overrides.productId && step2.warning) {
-        const idx = pendingWarnings.indexOf(step2.warning)
-        if (idx >= 0) pendingWarnings.splice(idx, 1)
+        const idx = pendingMessages.indexOf(step2.warning)
+        if (idx >= 0) pendingMessages.splice(idx, 1)
+      }
+
+      const flushPending = () => {
+        for (const message of pendingMessages) warnLine(line.id, message)
+        pendingMessages.length = 0
       }
 
       // Step 4: Handle semi_product (child BOM reference)
@@ -420,11 +455,11 @@ export async function explodeBom(
 
         if (childHeader && childHeader.isPhantom) {
           // Phantom: recurse and merge child lines into current level
-          result.warnings.push(...pendingWarnings)
+          flushPending()
           await recurse(line.childBomHeaderId, level, true)
         } else if (childHeader) {
           // Non-phantom sub-assembly: add as a line, then recurse for its children
-          result.warnings.push(...pendingWarnings)
+          flushPending()
           const qty = parseFloat(overrides.quantity ?? '0')
           const scrap = parseFloat(line.scrapPercentage ?? '0')
           result.lines.push({
@@ -443,23 +478,26 @@ export async function explodeBom(
           })
           await recurse(line.childBomHeaderId, level + 1, false)
         } else {
-          result.warnings.push(...pendingWarnings)
-          result.warnings.push(`Child BOM ${line.childBomHeaderId} not found for line ${line.id}`)
+          flushPending()
+          warnLine(line.id, `Child BOM ${line.childBomHeaderId} not found`)
         }
         continue
       }
 
-      // Material line. Flush pending warnings regardless of emit/skip so the
-      // Step 2 failure reason is visible to the user.
-      result.warnings.push(...pendingWarnings)
-
-      // B4 preserves the current "skip null productId" behavior. B5 flips
-      // this to "emit the line with productId: null" so the UI can surface
-      // unresolved rows in muted style.
+      // Material line.
+      //
+      // B5: unresolved lines (productId: null after Step 2 + Step 3) are
+      // emitted — matches the semi-product branch above — so the UI can
+      // surface muted-styled rows. Downstream planning consumers (MRP,
+      // work orders, purchasing) MUST filter `productId === null` rows
+      // out of demand totals. The attached warning (flushed below,
+      // keyed by bomLineId) carries the reason.
       if (!overrides.productId) {
-        result.warnings.push(`Line ${line.id} has null product_id — skipped`)
-        continue
+        pendingMessages.push(
+          'line emitted with null product_id — excluded from planning totals',
+        )
       }
+      flushPending()
 
       const qty = parseFloat(overrides.quantity ?? '0')
       const scrap = parseFloat(line.scrapPercentage ?? '0')
@@ -485,4 +523,28 @@ export async function explodeBom(
 
   await recurse(input.bomHeaderId, 0, false)
   return result
+}
+
+// ---------------------------------------------------------------------------
+// Consumer helpers
+// ---------------------------------------------------------------------------
+
+// Groups line-specific warnings by bomLineId so UI renderers (e.g. BOM tree
+// view row inspector) can fetch warnings alongside the matching ExplosionLine
+// without re-scanning the warnings array. Graph-level warnings (bomLineId:
+// null) are not included — consumers that need them should read
+// `result.warnings.filter(w => w.bomLineId === null)` directly.
+//
+// Return type is read-only to signal that the grouping is derived state —
+// consumers should not mutate it (e.g. to suppress warnings); mutating the
+// source of truth means changing `result.warnings`.
+export function warningsByLineId(result: ExplosionResult): ReadonlyMap<string, readonly string[]> {
+  const grouped = new Map<string, string[]>()
+  for (const warning of result.warnings) {
+    if (warning.bomLineId === null) continue
+    const existing = grouped.get(warning.bomLineId)
+    if (existing) existing.push(warning.message)
+    else grouped.set(warning.bomLineId, [warning.message])
+  }
+  return grouped
 }
