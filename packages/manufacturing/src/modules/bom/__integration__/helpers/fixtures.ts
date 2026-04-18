@@ -12,14 +12,17 @@ export type BomHeaderFixture = { id: string }
 export async function createBomHeaderFixture(
   request: APIRequestContext,
   token: string,
-  input: { productId: string; name: string },
+  input: { productId: string; name: string; bomUsage?: string },
 ): Promise<BomHeaderFixture> {
+  // bomUsage intentionally omitted when not provided — the BomHeader entity
+  // defaults it to 'production', and letting the default apply means the
+  // integration suite exercises the same path as a bare "Save" from the UI.
   const response = await apiRequest(request, 'POST', '/api/bom/bom', {
     token,
     data: {
       productId: input.productId,
       name: input.name,
-      bomUsage: 'manufacturing',
+      ...(input.bomUsage != null ? { bomUsage: input.bomUsage } : {}),
       isActive: true,
     },
   })
@@ -166,6 +169,37 @@ export async function deleteBomLineVariantIfExists(
   } catch {
     return
   }
+}
+
+// Where-used query helper per spec b §API. Matches on BomLine.product_id +
+// BomLine.product_variant_id (when provided) + BomLineVariant override pair.
+// productId is required; productVariantId narrows the match. Response items
+// carry the MASTER product of each BomHeader, not the searched UUID.
+export type WhereUsedItem = {
+  bomHeaderId: string
+  bomHeaderName: string
+  productId: string
+}
+
+export async function queryWhereUsed(
+  request: APIRequestContext,
+  token: string,
+  input: { productId: string; productVariantId?: string },
+): Promise<WhereUsedItem[]> {
+  const params = new URLSearchParams({ productId: input.productId })
+  if (input.productVariantId) params.set('productVariantId', input.productVariantId)
+  const response = await apiRequest(
+    request,
+    'GET',
+    `/api/bom/bom/where-used?${params.toString()}`,
+    { token },
+  )
+  expect(
+    response.ok(),
+    `where-used failed: ${response.status()} ${await response.text().catch(() => '')}`,
+  ).toBeTruthy()
+  const body = (await response.json()) as { items?: WhereUsedItem[] }
+  return body.items ?? []
 }
 
 // Shape returned by the worker in resultSummary (mirrors ExplosionResult in
