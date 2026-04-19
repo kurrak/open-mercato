@@ -1,4 +1,24 @@
 {
-  "routing.tab.placeholder": "Operacje marszruty, centra pracy i graf zależności będą wyświetlane tutaj.",
-  "routing.tab.title": "Marszruta produkcyjna"
+  "routing.selector.ariaLabel": "Wybierz marszrutę",
+  "routing.selector.inactiveSuffix": "nieaktywna",
+  "routing.tab.addRouting": "Dodaj marszrutę",
+  "routing.tab.created": "Marszruta utworzona.",
+  "routing.tab.createDialog.submit": "Utwórz",
+  "routing.tab.createDialog.title": "Utwórz marszrutę",
+  "routing.tab.deleteConfirm.confirm": "Usuń marszrutę",
+  "routing.tab.deleteConfirm.text": "Marszruta „{name}” zostanie usunięta miękko. Jej operacje i zależności pozostają w bazie danych, ale nie są już dostępne z tej zakładki.",
+  "routing.tab.deleteConfirm.title": "Usunąć tę marszrutę?",
+  "routing.tab.deleteRouting": "Usuń marszrutę",
+  "routing.tab.deleteSuccess": "Marszruta usunięta.",
+  "routing.tab.empty.createCta": "Utwórz marszrutę",
+  "routing.tab.empty.description": "Utwórz marszrutę, aby zacząć definiować operacje, centra pracy i zależności dla tego produktu.",
+  "routing.tab.empty.title": "Brak zdefiniowanej marszruty",
+  "routing.tab.error.loadTemplates": "Nie udało się wczytać marszrut.",
+  "routing.tab.loading": "Wczytywanie marszrut…",
+  "routing.tab.operationsPlaceholder": "Operacje, nadpisania wariantów, zależności i panel rozkładu czasu pojawią się tutaj.",
+  "routing.tab.title": "Marszruta produkcyjna",
+  "routing.template.form.group.main": "Szczegóły marszruty",
+  "routing.template.form.isActive": "Aktywna",
+  "routing.template.form.name": "Nazwa",
+  "routing.template.form.namePlaceholder": "np. Marszruta montażu siedziska"
 }

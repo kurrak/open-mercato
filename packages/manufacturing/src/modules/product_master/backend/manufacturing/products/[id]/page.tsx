@@ -207,7 +207,7 @@ export default function ManufacturingProductDetailPage({
           />
         )}
         {activeTab === 'bom' && <BomTab productId={product.id} extension={extension} />}
-        {activeTab === 'routing' && <RoutingTab productId={product.id} />}
+        {activeTab === 'routing' && <RoutingTab productId={product.id} extension={extension} />}
         {activeTab === 'configurator' && <ConfiguratorTab productId={product.id} configurationType={extension.configurationType} />}
       </ManufacturingTabsLayout>
     </div>

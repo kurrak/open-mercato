@@ -1,4 +1,24 @@
 {
-  "routing.tab.placeholder": "Arbeitsgänge, Arbeitsplätze und Abhängigkeitsgraph werden hier angezeigt.",
-  "routing.tab.title": "Arbeitsplan"
+  "routing.selector.ariaLabel": "Arbeitsplan auswählen",
+  "routing.selector.inactiveSuffix": "inaktiv",
+  "routing.tab.addRouting": "Arbeitsplan hinzufügen",
+  "routing.tab.created": "Arbeitsplan erstellt.",
+  "routing.tab.createDialog.submit": "Erstellen",
+  "routing.tab.createDialog.title": "Arbeitsplan erstellen",
+  "routing.tab.deleteConfirm.confirm": "Arbeitsplan löschen",
+  "routing.tab.deleteConfirm.text": "Der Arbeitsplan „{name}“ wird weich gelöscht. Seine Arbeitsgänge und Abhängigkeiten bleiben in der Datenbank erhalten, sind aber über diese Registerkarte nicht mehr erreichbar.",
+  "routing.tab.deleteConfirm.title": "Diesen Arbeitsplan löschen?",
+  "routing.tab.deleteRouting": "Arbeitsplan löschen",
+  "routing.tab.deleteSuccess": "Arbeitsplan gelöscht.",
+  "routing.tab.empty.createCta": "Arbeitsplan erstellen",
+  "routing.tab.empty.description": "Erstellen Sie einen Arbeitsplan, um Arbeitsgänge, Arbeitsplätze und Abhängigkeiten für dieses Produkt zu definieren.",
+  "routing.tab.empty.title": "Kein Arbeitsplan definiert",
+  "routing.tab.error.loadTemplates": "Arbeitspläne konnten nicht geladen werden.",
+  "routing.tab.loading": "Arbeitspläne werden geladen…",
+  "routing.tab.operationsPlaceholder": "Arbeitsgänge, Variantenüberschreibungen, Abhängigkeiten und das Zeitaggregations-Panel werden hier angezeigt.",
+  "routing.tab.title": "Arbeitsplan",
+  "routing.template.form.group.main": "Arbeitsplan-Details",
+  "routing.template.form.isActive": "Aktiv",
+  "routing.template.form.name": "Name",
+  "routing.template.form.namePlaceholder": "z. B. Sitzmontage-Arbeitsplan"
 }

@@ -1,4 +1,24 @@
 {
-  "routing.tab.placeholder": "Las operaciones de ruta, centros de trabajo y grafo de dependencias se mostrarán aquí.",
-  "routing.tab.title": "Ruta de producción"
+  "routing.selector.ariaLabel": "Seleccionar una ruta",
+  "routing.selector.inactiveSuffix": "inactiva",
+  "routing.tab.addRouting": "Añadir ruta",
+  "routing.tab.created": "Ruta creada.",
+  "routing.tab.createDialog.submit": "Crear",
+  "routing.tab.createDialog.title": "Crear ruta",
+  "routing.tab.deleteConfirm.confirm": "Eliminar ruta",
+  "routing.tab.deleteConfirm.text": "La ruta «{name}» se eliminará de forma lógica. Sus operaciones y dependencias permanecen en la base de datos, pero ya no son accesibles desde esta pestaña.",
+  "routing.tab.deleteConfirm.title": "¿Eliminar esta ruta?",
+  "routing.tab.deleteRouting": "Eliminar ruta",
+  "routing.tab.deleteSuccess": "Ruta eliminada.",
+  "routing.tab.empty.createCta": "Crear ruta",
+  "routing.tab.empty.description": "Crea una ruta para empezar a definir operaciones, centros de trabajo y dependencias para este producto.",
+  "routing.tab.empty.title": "No hay ruta definida",
+  "routing.tab.error.loadTemplates": "Error al cargar las rutas.",
+  "routing.tab.loading": "Cargando rutas…",
+  "routing.tab.operationsPlaceholder": "Las operaciones, sobrescrituras de variante, dependencias y el panel de resumen de tiempo se mostrarán aquí.",
+  "routing.tab.title": "Ruta de producción",
+  "routing.template.form.group.main": "Detalles de la ruta",
+  "routing.template.form.isActive": "Activa",
+  "routing.template.form.name": "Nombre",
+  "routing.template.form.namePlaceholder": "p. ej. Ruta de montaje de asiento"
 }

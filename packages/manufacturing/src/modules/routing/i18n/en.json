@@ -1,4 +1,24 @@
 {
-  "routing.tab.placeholder": "Routing operations, work centers, and dependency graph will be displayed here.",
-  "routing.tab.title": "Production Routing"
+  "routing.selector.ariaLabel": "Select a routing",
+  "routing.selector.inactiveSuffix": "inactive",
+  "routing.tab.addRouting": "Add routing",
+  "routing.tab.created": "Routing created.",
+  "routing.tab.createDialog.submit": "Create",
+  "routing.tab.createDialog.title": "Create routing",
+  "routing.tab.deleteConfirm.confirm": "Delete routing",
+  "routing.tab.deleteConfirm.text": "The routing \"{name}\" will be soft-deleted. Its operations and dependencies remain in the database but are no longer reachable through this tab.",
+  "routing.tab.deleteConfirm.title": "Delete this routing?",
+  "routing.tab.deleteRouting": "Delete routing",
+  "routing.tab.deleteSuccess": "Routing deleted.",
+  "routing.tab.empty.createCta": "Create routing",
+  "routing.tab.empty.description": "Create a routing to start defining operations, work centers, and dependencies for this product.",
+  "routing.tab.empty.title": "No routing defined",
+  "routing.tab.error.loadTemplates": "Failed to load routings.",
+  "routing.tab.loading": "Loading routings…",
+  "routing.tab.operationsPlaceholder": "Operations, variant overrides, dependencies, and the time rollup panel will render here.",
+  "routing.tab.title": "Production Routing",
+  "routing.template.form.group.main": "Routing details",
+  "routing.template.form.isActive": "Active",
+  "routing.template.form.name": "Name",
+  "routing.template.form.namePlaceholder": "e.g. Seat assembly routing"
 }

@@ -26,6 +26,8 @@ import { useSubmitShortcut } from '../../../../lib/useSubmitShortcut'
 import { DetailSection, Select } from '../../../../lib/components'
 import { useIsBomReady } from '../../../bom/hooks/useIsBomReady'
 import { useBomHeaderNamesByIds } from '../../../bom/hooks/useBomHeaderNamesByIds'
+import { useIsRoutingReady } from '../../../routing/hooks/useIsRoutingReady'
+import { useRoutingTemplateNamesByIds } from '../../../routing/hooks/useRoutingTemplateNamesByIds'
 
 type ManufacturingExtension = {
   id: string
@@ -351,7 +353,10 @@ export default function OverviewTab({
   // starts false while fetching) is acceptable; planning consumers
   // downstream depend on the stricter definition.
   const hasBom = useIsBomReady(productId)
-  const hasRouting = productionMethods.some((pm) => pm.routingTemplateId != null)
+  // spec c §Readiness checklist integration — "ready" requires at least
+  // one non-deleted OperationTemplate under some active RoutingTemplate,
+  // not just a PM-linked routing id. Matches the BOM readiness tightening.
+  const hasRouting = useIsRoutingReady(productId)
 
   // Batch-resolve the PM-linked BomHeader names so each PM card shows the
   // specific BOM it references (rather than every card showing the same
@@ -365,6 +370,15 @@ export default function OverviewTab({
     [productionMethods],
   )
   const bomHeaderNamesById = useBomHeaderNamesByIds(pmBomHeaderIds)
+
+  const pmRoutingTemplateIds = React.useMemo(
+    () =>
+      productionMethods
+        .map((pm) => pm.routingTemplateId)
+        .filter((id): id is string => typeof id === 'string'),
+    [productionMethods],
+  )
+  const routingNamesById = useRoutingTemplateNamesByIds(pmRoutingTemplateIds)
 
   const readiness: ReadinessItem[] = [
     { label: t('manufacturing.products.overview.readiness.manufacturingEnabled', 'Manufacturing enabled'), done: true },
@@ -537,7 +551,7 @@ export default function OverviewTab({
                       </span>
                       <span>
                         {pm.routingTemplateId
-                          ? t('routing.tab.title', 'Routing')
+                          ? (routingNamesById.get(pm.routingTemplateId) ?? t('routing.tab.title', 'Routing'))
                           : t('manufacturing.products.overview.productionMethods.noRouting', 'No routing')}
                       </span>
                     </div>
