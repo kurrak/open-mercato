@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react'
 import { Button } from '@open-mercato/ui/primitives/button'
 import { Spinner } from '@open-mercato/ui/primitives/spinner'
@@ -595,50 +596,39 @@ function ResolutionBadge({ resolution }: { resolution: Resolution }) {
 // without a dedicated output-contract field.
 // ---------------------------------------------------------------------------
 
+const EMPTY_RESOLVE_KEY_MAP: ReadonlyMap<string, string | null> = new Map()
+
 function useBomLineResolveKeys(bomLineIds: readonly string[]): ReadonlyMap<string, string | null> {
-  const [map, setMap] = React.useState<ReadonlyMap<string, string | null>>(new Map())
-
-  const signature = React.useMemo(() => {
-    if (bomLineIds.length === 0) return ''
-    return [...new Set(bomLineIds)].sort().join(',')
+  const sortedIds = React.useMemo(() => {
+    if (bomLineIds.length === 0) return [] as string[]
+    return [...new Set(bomLineIds)].sort()
   }, [bomLineIds])
+  const signature = sortedIds.join(',')
 
-  React.useEffect(() => {
-    if (!signature) {
-      setMap(new Map())
-      return
-    }
-    let cancelled = false
-    const ids = signature.split(',')
-    // Catalog endpoints cap pageSize at 100; bom-line uses the same factory,
-    // so chunking isn't necessary for typical BOMs. A single BOM is unlikely
-    // to exceed 100 unique bomLineIds in its explosion output.
-    readApiResultOrThrow<{ items?: BomLineMeta[] }>(
-      `/api/bom/bom-line?ids=${encodeURIComponent(ids.join(','))}&pageSize=${Math.max(ids.length, 1)}`,
-      undefined,
-      { errorMessage: 'bom line resolve-key batch fetch failed' },
-    )
-      .then((data) => {
-        if (cancelled) return
-        const out = new Map<string, string | null>()
-        for (const item of data?.items ?? []) {
-          if (typeof item.id === 'string') {
-            out.set(item.id, item.product_resolve_key ?? null)
-          }
+  // Catalog endpoints cap pageSize at 100; bom-line uses the same factory,
+  // so chunking isn't necessary for typical BOMs. A single BOM is unlikely
+  // to exceed 100 unique bomLineIds in its explosion output.
+  const { data } = useQuery({
+    queryKey: ['manufacturing', 'bom', 'line-resolve-keys', signature] as const,
+    queryFn: async () => {
+      const payload = await readApiResultOrThrow<{ items?: BomLineMeta[] }>(
+        `/api/bom/bom-line?ids=${encodeURIComponent(signature)}&pageSize=${Math.max(sortedIds.length, 1)}`,
+        undefined,
+        { errorMessage: 'bom line resolve-key batch fetch failed' },
+      )
+      const out = new Map<string, string | null>()
+      for (const item of payload?.items ?? []) {
+        if (typeof item.id === 'string') {
+          out.set(item.id, item.product_resolve_key ?? null)
         }
-        setMap(out)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.warn('[bom] useBomLineResolveKeys: fetch failed', err)
-        setMap(new Map())
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [signature])
+      }
+      return out as ReadonlyMap<string, string | null>
+    },
+    enabled: sortedIds.length > 0,
+    staleTime: 30_000,
+  })
 
-  return map
+  return data ?? EMPTY_RESOLVE_KEY_MAP
 }
 
 export default BomExplosionPanel
