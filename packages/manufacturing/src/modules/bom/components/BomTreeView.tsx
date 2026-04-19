@@ -64,6 +64,7 @@ export type BomLineRow = {
   valid_from: string | null
   valid_to: string | null
   is_consumable: boolean
+  notes: string | null
 }
 
 type LineDisplayRow = GenericLineDisplayRow<BomLineRow>

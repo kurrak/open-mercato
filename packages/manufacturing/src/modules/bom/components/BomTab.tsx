@@ -22,6 +22,7 @@ import { useT } from '@open-mercato/shared/lib/i18n/context'
 import { useListLoader } from '../../../lib/useListLoader'
 import { BomHeaderSelector, type BomHeaderOption } from './BomHeaderSelector'
 import { BomTreeView, type BomLineRow } from './BomTreeView'
+import { BomLineDialog } from './BomLineDialog'
 import {
   BOM_HEADER_DEFAULT_VALUES,
   buildBomHeaderFormFields,
@@ -175,30 +176,28 @@ export default function BomTab({ productId }: BomTabProps) {
     }
   }, [confirm, runMutation, retryLastMutation, queryClient, selectedId, headers, reload, t])
 
-  const handleEditLine = React.useCallback(
-    (_row: BomLineRow) => {
-      // The BomLine CRUD dialog is not implemented yet; swap the flash for
-      // the real dialog open when it lands. Accepting the row here keeps
-      // the stub's shape aligned with the future dialog open signature.
-      flash(t('bom.tab.editLineComingSoon', 'Line editing is not implemented yet.'), 'info')
-    },
-    [t],
-  )
+  // BomLine dialog state — tracks whether open, which header the new/edited
+  // line belongs to, and the line being edited (or null for add). Kept
+  // together so the dialog renders once per tab with the right props for
+  // both flows.
+  const [lineDialogState, setLineDialogState] = React.useState<
+    | { mode: 'add'; bomHeaderId: string }
+    | { mode: 'edit'; line: BomLineRow }
+    | null
+  >(null)
 
-  const handleAddLine = React.useCallback(
-    (_targetHeaderId: string) => {
-      // The BomLine dialog will open with bomHeaderId pre-filled. Until
-      // then a flash stub lets users see the affordance at every depth.
-      flash(
-        t(
-          'bom.tab.addLineComingSoon',
-          'Line creation dialog is not implemented yet — it will open scoped to this BOM header.',
-        ),
-        'info',
-      )
-    },
-    [t],
-  )
+  const handleEditLine = React.useCallback((row: BomLineRow) => {
+    setLineDialogState({ mode: 'edit', line: row })
+  }, [])
+
+  const handleAddLine = React.useCallback((targetHeaderId: string) => {
+    setLineDialogState({ mode: 'add', bomHeaderId: targetHeaderId })
+  }, [])
+
+  const handleLineDialogSuccess = React.useCallback(() => {
+    setLineDialogState(null)
+    reload()
+  }, [reload])
 
   if (headersLoading) {
     return <LoadingMessage label={t('bom.tab.loading', 'Loading BOMs…')} />
@@ -293,6 +292,22 @@ export default function BomTab({ productId }: BomTabProps) {
         onOpenChange={setCreateDialogOpen}
         onSubmit={handleCreateBomHeader}
       />
+
+      {lineDialogState ? (
+        <BomLineDialog
+          open
+          onOpenChange={(next) => { if (!next) setLineDialogState(null) }}
+          masterProductId={productId}
+          bomHeaderId={
+            lineDialogState.mode === 'add'
+              ? lineDialogState.bomHeaderId
+              : lineDialogState.line.bom_header_id
+          }
+          editingLine={lineDialogState.mode === 'edit' ? lineDialogState.line : null}
+          onSuccess={handleLineDialogSuccess}
+        />
+      ) : null}
+
       {ConfirmDialogElement}
     </div>
     </TooltipProvider>

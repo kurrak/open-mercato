@@ -148,6 +148,32 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
     if (driftViolation) throw buildInvariantHttpError([driftViolation])
 
     const bomHeader = await em.findOneOrFail(BomHeader, { id: parsed.bomHeaderId })
+
+    // Default sortOrder to max(existing) + 1 so newly-created lines append
+    // to the end of the tree view (which sorts ascending). Clients that
+    // want a specific position pass sortOrder explicitly (reorder flow).
+    //
+    // Race window: two concurrent creates for the same bomHeaderId will
+    // read the same max and collide on sort_order. The tree tolerates
+    // duplicates (it falls back to created_at ordering within a tie), so
+    // the UX cost is cosmetic — acceptable for Phase C single-user flows.
+    // A hardening pass can add a pessimistic lock on the parent header or
+    // a UNIQUE (bom_header_id, sort_order) constraint with retry.
+    //
+    // Implementation note: MAX via QueryBuilder aggregate rather than
+    // loading all rows — constant-time regardless of BOM size.
+    let resolvedSortOrder: number
+    if (typeof parsed.sortOrder === 'number') {
+      resolvedSortOrder = parsed.sortOrder
+    } else {
+      const maxRow = await em.createQueryBuilder(BomLine, 'bl')
+        .select('max(bl.sort_order) as max_sort_order', true)
+        .where({ bomHeader: { id: parsed.bomHeaderId }, deletedAt: null })
+        .execute<Array<{ max_sort_order: number | null }>>('all')
+      const maxSort = maxRow[0]?.max_sort_order ?? -1
+      resolvedSortOrder = maxSort + 1
+    }
+
     const record = em.create(BomLine, {
       organizationId: parsed.organizationId,
       tenantId: parsed.tenantId,
@@ -163,7 +189,7 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
       uomId: parsed.uomId ?? null,
       variantCondition: parsed.variantCondition ?? null,
       operationTemplateId: parsed.operationTemplateId ?? null,
-      sortOrder: parsed.sortOrder ?? 0,
+      sortOrder: resolvedSortOrder,
       validFrom: parsed.validFrom ?? null,
       validTo: parsed.validTo ?? null,
       isConsumable: parsed.isConsumable ?? false,
