@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@open-mercato/ui/primitives/dialog'
+import { Button } from '@open-mercato/ui/primitives/button'
 import { IconButton } from '@open-mercato/ui/primitives/icon-button'
 import { SimpleTooltip } from '@open-mercato/ui/primitives/tooltip'
 import { Notice } from '@open-mercato/ui/primitives/Notice'
@@ -17,6 +18,7 @@ import { flash } from '@open-mercato/ui/backend/FlashMessages'
 import { createCrud, updateCrud } from '@open-mercato/ui/backend/utils/crud'
 import { useT } from '@open-mercato/shared/lib/i18n/context'
 import { VariantConditionEditor } from './VariantConditionEditor'
+import { useConfigAttributeKeys } from '../../configurator/components/useConfigAttributeKeys'
 import {
   BOM_HEADER_DEFAULT_VALUES,
   buildBomHeaderFormFields,
@@ -29,6 +31,8 @@ import {
   buildBomLineBasicFields,
   buildCreatePayload,
   buildUpdatePayload,
+  clearOnLineTypeChange,
+  clearOnResolutionModeChange,
   normalizeVariantCondition,
   type BomLineFormValues,
 } from './BomLineFormConfig'
@@ -85,9 +89,30 @@ export function BomLineDialog({
   // but we need `lineType` at the group-composition level to swap which
   // custom groups render.
   const [lineType, setLineType] = React.useState<BomLineFormValues['lineType']>(initialValues.lineType)
+  // Resolution mode (§5 Dynamic add-on). Derive the initial value from
+  // initialValues.productResolveKey — a non-empty resolve-key means the
+  // persisted line is in dynamic mode. When lineType flips to
+  // semi_product the mode snaps back to static (semi_product rows are
+  // static-only per spec §BomLine Constraints: "Resolve-key scope:
+  // semi_product lines cannot use dynamic resolution").
+  const [resolutionMode, setResolutionMode] = React.useState<'static' | 'dynamic'>(
+    initialValues.productResolveKey.trim().length > 0 && initialValues.lineType === 'material'
+      ? 'dynamic'
+      : 'static',
+  )
   React.useEffect(() => {
     setLineType(initialValues.lineType)
+    setResolutionMode(
+      initialValues.productResolveKey.trim().length > 0 && initialValues.lineType === 'material'
+        ? 'dynamic'
+        : 'static',
+    )
   }, [initialValues])
+  React.useEffect(() => {
+    if (lineType === 'semi_product' && resolutionMode === 'dynamic') {
+      setResolutionMode('static')
+    }
+  }, [lineType, resolutionMode])
 
   const builtinFields = React.useMemo(() => buildBomLineBasicFields(t), [t])
 
@@ -113,6 +138,43 @@ export function BomLineDialog({
             {...props}
             onExternalChange={(next) => setLineType(next)}
           />
+        ),
+      },
+      // Phantom field — never writes to the form's `values` map. It exists
+      // only so the toggle participates in CrudForm's group layout (same
+      // card, same spacing, same responsive grid). The outer
+      // `resolutionMode` state — not CrudForm state — is the source of
+      // truth; buildSharedPayloadFields reads the downstream fields
+      // (productId / productVariantId / productResolveKey) to produce the
+      // payload, so the toggle's "value" doesn't need to be submitted.
+      {
+        id: '__resolutionMode',
+        label: t('bom.lineForm.field.resolutionMode', 'Resolution mode'),
+        type: 'custom',
+        component: (props) => (
+          <ResolutionModeToggleField
+            value={resolutionMode}
+            disabled={(props.values?.lineType as string) === 'semi_product'}
+            onChange={(next) => {
+              if (next === resolutionMode) return
+              setResolutionMode(next)
+              // Clear fields from the other branch so the saved payload
+              // matches the toggle. buildCreatePayload's XOR handles this
+              // too as a backstop, but keeping form state in sync avoids
+              // stale values flickering between renders.
+              for (const fieldId of clearOnResolutionModeChange(next)) {
+                props.setFormValue?.(fieldId, '')
+              }
+            }}
+          />
+        ),
+      },
+      {
+        id: 'productResolveKey',
+        label: t('bom.lineForm.field.resolveKey', 'Resolve key'),
+        type: 'custom',
+        component: (props) => (
+          <ResolveKeyPickerField {...props} masterProductId={masterProductId} />
         ),
       },
       {
@@ -190,7 +252,7 @@ export function BomLineDialog({
         ),
       },
     ],
-    [t, masterProductId],
+    [t, masterProductId, resolutionMode],
   )
 
   // Compose groups + inline the custom fields so CrudForm renders them in
@@ -198,6 +260,11 @@ export function BomLineDialog({
   // field configs; we slot the custom fields by id into the right groups.
   const composedGroups = React.useMemo(() => {
     const byId = new Map<string, CrudField>(customFields.map((f) => [f.id, f]))
+    // Helper: produce a shallow-copied field with `disabled` set. CrudForm
+    // threads `field.disabled` into the custom component's props so our
+    // combobox renderers greyed-out their input + button automatically.
+    const disableField = (field: CrudField, disabled: boolean): CrudField =>
+      disabled ? { ...field, disabled: true } : field
     return [
       {
         id: 'identity',
@@ -209,11 +276,26 @@ export function BomLineDialog({
         title: t('bom.lineForm.group.resolution', 'Resolution'),
         description: t(
           'bom.lineForm.group.resolutionHelp',
-          'Static mode is the current default. Dynamic resolve-key authoring lands in a follow-up.',
+          'Static mode pins a specific product / variant at design time; Dynamic mode resolves the product at explosion time against a ConfigAttribute key (material lines only).',
         ),
+        // Toggle first, then the pickers. Per spec §5 "Static product +
+        // variant pickers are disabled and cleared to satisfy the XOR
+        // constraint" — we keep them visible-but-disabled rather than
+        // removing the rows, so the transition doesn't jump layout.
+        // semi_product lines have their own set (Product + ChildBOM) and
+        // the toggle is locked to Static.
         fields: lineType === 'semi_product'
-          ? [byId.get('productId')!, byId.get('childBomHeaderId')!]
-          : [byId.get('productId')!, byId.get('productVariantId')!],
+          ? [
+              byId.get('__resolutionMode')!,
+              byId.get('productId')!,
+              byId.get('childBomHeaderId')!,
+            ]
+          : [
+              byId.get('__resolutionMode')!,
+              disableField(byId.get('productId')!, resolutionMode === 'dynamic'),
+              disableField(byId.get('productVariantId')!, resolutionMode === 'dynamic'),
+              disableField(byId.get('productResolveKey')!, resolutionMode === 'static'),
+            ],
       },
       {
         id: 'quantities',
@@ -254,7 +336,7 @@ export function BomLineDialog({
         fields: ['notes'],
       },
     ]
-  }, [customFields, lineType, t])
+  }, [customFields, lineType, resolutionMode, t])
 
   const handleSubmit = React.useCallback(
     async (values: BomLineFormValues) => {
@@ -307,6 +389,157 @@ export function BomLineDialog({
 }
 
 // ---------------------------------------------------------------------------
+// Custom field: Resolution-mode toggle — segmented Static / Dynamic control.
+// Hidden from the form payload (value never submitted); the real contract is
+// which downstream fields (productId/variantId vs productResolveKey) are
+// populated. Disabled with a tooltip when line_type='semi_product' per spec
+// §BomLine Constraints "Resolve-key scope".
+// ---------------------------------------------------------------------------
+
+type ResolutionModeToggleFieldProps = {
+  value: 'static' | 'dynamic'
+  onChange: (next: 'static' | 'dynamic') => void
+  disabled?: boolean
+}
+
+function ResolutionModeToggleField({ value, onChange, disabled }: ResolutionModeToggleFieldProps) {
+  const t = useT()
+  return (
+    <div className="space-y-1">
+      <SimpleTooltip
+        content={
+          disabled
+            ? t(
+                'bom.lineForm.resolutionMode.disabledTooltip',
+                'Dynamic mode is material-only — sub-assembly lines always reference a specific child BOM.',
+              )
+            : ''
+        }
+        disabled={!disabled}
+      >
+        <div className="inline-flex overflow-hidden rounded-md border">
+          <Button
+            type="button"
+            variant={value === 'static' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 rounded-none"
+            onClick={() => onChange('static')}
+            disabled={disabled}
+          >
+            {t('bom.lineForm.resolutionMode.static', 'Static')}
+          </Button>
+          <Button
+            type="button"
+            variant={value === 'dynamic' ? 'default' : 'ghost'}
+            size="sm"
+            className="h-8 rounded-none"
+            onClick={() => onChange('dynamic')}
+            disabled={disabled}
+          >
+            {t('bom.lineForm.resolutionMode.dynamic', 'Dynamic')}
+          </Button>
+        </div>
+      </SimpleTooltip>
+      <p className="text-xs text-muted-foreground">
+        {value === 'static'
+          ? t('bom.lineForm.resolutionMode.staticHelp', 'Pin a specific Product (and optionally a ProductVariant) at design time.')
+          : t('bom.lineForm.resolutionMode.dynamicHelp', 'Reference a configuration key; the concrete Product / ProductVariant is resolved at explosion time.')}
+      </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Custom field: Resolve-key picker — combobox of ConfigAttribute.key values
+// for the master product, filtered to attribute_type = 'product' |
+// 'product_variant'. Free-text values permitted (Graceful Incompleteness —
+// the configurator may not be defined yet when the BOM is drafted); unknown
+// keys render a warning badge rather than blocking save.
+// ---------------------------------------------------------------------------
+
+type ResolveKeyPickerFieldProps = CrudCustomFieldRenderProps & { masterProductId: string }
+
+function ResolveKeyPickerField({ value, setValue, disabled, masterProductId }: ResolveKeyPickerFieldProps) {
+  const t = useT()
+  const { attributesByKey, ready } = useConfigAttributeKeys(masterProductId)
+  const current = typeof value === 'string' ? value : ''
+
+  // Only `product` / `product_variant` attributes can drive dynamic
+  // resolution; other attribute types (enum / boolean / numeric_range /
+  // text) resolve at Step 1 but not Step 2 in explosion.
+  const applicable = React.useMemo(() => {
+    const out: Array<{ key: string; attributeType: string }> = []
+    for (const [key, meta] of attributesByKey.entries()) {
+      if (meta.attributeType === 'product' || meta.attributeType === 'product_variant') {
+        out.push({ key, attributeType: meta.attributeType })
+      }
+    }
+    return out
+  }, [attributesByKey])
+
+  const suggestions: ComboboxOption[] = applicable.map((item) => ({
+    value: item.key,
+    label: item.key,
+    description: item.attributeType,
+  }))
+
+  const meta = current ? attributesByKey.get(current) : undefined
+  // Two distinct failure modes once the scope has loaded:
+  //  - no match: the key isn't defined as a ConfigAttribute on the master
+  //    (typo, free-text placeholder, or drift between BOM and configurator)
+  //  - type mismatch: the ConfigAttribute exists but its attribute_type is
+  //    enum / boolean / numeric_range / text — those don't drive Step 2
+  //    dynamic resolution (spec §BOM Explosion Step 2)
+  const keyAbsent = ready && current.length > 0 && !meta
+  const keyWrongType =
+    ready && current.length > 0 && meta != null &&
+    meta.attributeType !== 'product' && meta.attributeType !== 'product_variant'
+
+  return (
+    <div className="space-y-1">
+      <ComboboxInput
+        value={current}
+        onChange={setValue}
+        placeholder={t('bom.lineForm.resolveKey.placeholder', 'e.g. fabric')}
+        suggestions={suggestions}
+        allowCustomValues
+        disabled={disabled}
+      />
+      {keyAbsent ? (
+        <SimpleTooltip
+          content={t(
+            'bom.lineForm.resolveKey.unknownTooltip',
+            'This key has no matching product / product_variant ConfigAttribute on the master. The line saves (Graceful Incompleteness) but will emit a warning at explosion time.',
+          )}
+        >
+          <span className="inline-flex cursor-help items-center rounded-full border border-amber-500 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+            {t('bom.lineForm.resolveKey.unknownBadge', 'Unknown key')}
+          </span>
+        </SimpleTooltip>
+      ) : keyWrongType ? (
+        <SimpleTooltip
+          content={t(
+            'bom.lineForm.resolveKey.wrongTypeTooltip',
+            'This ConfigAttribute exists but its type ({type}) cannot drive dynamic product resolution — only product / product_variant attribute_types are valid here.',
+          ).replace('{type}', meta?.attributeType ?? '')}
+        >
+          <span className="inline-flex cursor-help items-center rounded-full border border-amber-500 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+            {t('bom.lineForm.resolveKey.wrongTypeBadge', 'Wrong attribute type')}
+          </span>
+        </SimpleTooltip>
+      ) : ready && applicable.length === 0 && current.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t(
+            'bom.lineForm.resolveKey.emptyHint',
+            'This master product has no product / product_variant ConfigAttributes — type a free-text key (validated at explosion time).',
+          )}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Custom field: Line type select — mirrors CrudForm's internal value into
 // the outer React state so composedGroups recomputes on every change
 // (drives which pickers show in the resolution group + isPhantom visibility).
@@ -316,7 +549,7 @@ type LineTypeSelectFieldProps = CrudCustomFieldRenderProps & {
   onExternalChange: (next: BomLineFormValues['lineType']) => void
 }
 
-function LineTypeSelectField({ value, setValue, disabled, onExternalChange }: LineTypeSelectFieldProps) {
+function LineTypeSelectField({ value, setValue, setFormValue, disabled, onExternalChange }: LineTypeSelectFieldProps) {
   const t = useT()
   const current: BomLineFormValues['lineType'] = value === 'semi_product' ? 'semi_product' : 'material'
   return (
@@ -328,6 +561,14 @@ function LineTypeSelectField({ value, setValue, disabled, onExternalChange }: Li
         const next = (e.target.value === 'semi_product' ? 'semi_product' : 'material') as BomLineFormValues['lineType']
         setValue(next)
         onExternalChange(next)
+        // Clear fields from the outgoing branch so the saved payload stays
+        // valid across line-type flips. semi_product lines reject
+        // product_resolve_key (validators.ts — "Resolve-key scope: semi_product
+        // lines cannot use dynamic resolution") and don't pin variants;
+        // material lines don't carry a child BOM.
+        for (const fieldId of clearOnLineTypeChange(next)) {
+          setFormValue?.(fieldId, '')
+        }
       }}
     >
       <option value="material">{t('bom.lineForm.lineType.material', 'Material')}</option>

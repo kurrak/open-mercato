@@ -122,9 +122,10 @@ function buildSharedPayloadFields(values: BomLineFormValues): Record<string, unk
     notes: values.notes.trim() === '' ? null : values.notes,
   }
 
-  // Static vs Dynamic — XOR. Only Static is wired currently; the dynamic
-  // resolve-key toggle in a follow-up flips which branch runs. Payload
-  // shape is identical regardless.
+  // Static vs Dynamic — XOR. The resolution-mode toggle in the dialog
+  // flips which branch runs at UI level by clearing the opposing fields;
+  // this builder is the source-of-truth backstop that reads the resulting
+  // form state and emits the canonical payload shape regardless.
   if (values.productResolveKey.trim() !== '') {
     base.productId = null
     base.productVariantId = null
@@ -158,6 +159,42 @@ export function buildUpdatePayload(values: BomLineFormValues, id: string): Recor
 function emptyToNull(value: string): string | null {
   const trimmed = value.trim()
   return trimmed.length === 0 ? null : trimmed
+}
+
+// --------------------------------------------------------------------------
+// Reactive field-clearing rules — pure helpers consumed by the dialog's
+// lineType select + resolution-mode toggle. Kept here so the rules are
+// unit-testable under the node-env jest config (the dialog's RTL coverage
+// would require a jsdom-env migration, out of scope for this phase).
+// --------------------------------------------------------------------------
+
+/**
+ * When the user flips lineType, which form fields must be cleared so the
+ * saved payload stays valid? Without this, a Dynamic material line with a
+ * stale `productResolveKey` would be submitted as `semi_product` + the
+ * leftover resolve-key, which the server rejects via
+ * `validators.ts` ("Resolve-key scope: semi_product lines cannot use
+ * dynamic resolution").
+ */
+export function clearOnLineTypeChange(next: BomLineFormValues['lineType']): string[] {
+  if (next === 'semi_product') {
+    // semi_product does not carry a resolve-key or a pinned ProductVariant.
+    return ['productResolveKey', 'productVariantId']
+  }
+  // material lines never reference a child BomHeader.
+  return ['childBomHeaderId']
+}
+
+/**
+ * When the user flips the Static / Dynamic resolution-mode toggle, which
+ * form fields must be cleared so the payload-builder's XOR branch emits
+ * the intended shape? (buildSharedPayloadFields already self-corrects
+ * from the `productResolveKey` truthy check — this is for UI consistency.)
+ */
+export function clearOnResolutionModeChange(next: 'static' | 'dynamic'): string[] {
+  return next === 'dynamic'
+    ? ['productId', 'productVariantId', 'childBomHeaderId']
+    : ['productResolveKey']
 }
 
 // --------------------------------------------------------------------------

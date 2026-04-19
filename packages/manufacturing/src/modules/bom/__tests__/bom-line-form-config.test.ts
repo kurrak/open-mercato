@@ -3,6 +3,8 @@ import {
   bomLineToFormValues,
   buildCreatePayload,
   buildUpdatePayload,
+  clearOnLineTypeChange,
+  clearOnResolutionModeChange,
 } from '../components/BomLineFormConfig'
 import type { BomLineRow } from '../components/BomTreeView'
 
@@ -259,5 +261,38 @@ describe('round-trip: record → form values → payload', () => {
       productId: 'p-1',
       childBomHeaderId: 'h-child',
     })
+  })
+})
+
+describe('clearOnLineTypeChange', () => {
+  it('flipping to semi_product clears productResolveKey + productVariantId', () => {
+    expect(clearOnLineTypeChange('semi_product').sort()).toEqual(
+      ['productResolveKey', 'productVariantId'].sort(),
+    )
+  })
+
+  it('flipping to material clears childBomHeaderId', () => {
+    expect(clearOnLineTypeChange('material')).toEqual(['childBomHeaderId'])
+  })
+
+  // Regression guard for the H1 bug: a user authoring a Dynamic material
+  // line with productResolveKey='fabric' then flipping line type to
+  // semi_product must NOT submit the stale resolve-key (server rejects
+  // with "Resolve-key scope: semi_product lines cannot use dynamic
+  // resolution").
+  it('H1 regression: semi_product flip includes productResolveKey in the clear list', () => {
+    expect(clearOnLineTypeChange('semi_product')).toContain('productResolveKey')
+  })
+})
+
+describe('clearOnResolutionModeChange', () => {
+  it('flipping to dynamic clears productId + productVariantId + childBomHeaderId', () => {
+    expect(clearOnResolutionModeChange('dynamic').sort()).toEqual(
+      ['childBomHeaderId', 'productId', 'productVariantId'].sort(),
+    )
+  })
+
+  it('flipping to static clears productResolveKey', () => {
+    expect(clearOnResolutionModeChange('static')).toEqual(['productResolveKey'])
   })
 })
