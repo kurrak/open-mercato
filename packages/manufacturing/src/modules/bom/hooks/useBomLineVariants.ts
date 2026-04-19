@@ -6,6 +6,7 @@
 // `bomLineIds` filter on the list API, or a bomHeader-scoped variants
 // endpoint). Pick up when trigger conditions fire.
 
+import * as React from 'react'
 import { useQueries, type UseQueryResult } from '@tanstack/react-query'
 import { readApiResultOrThrow } from '@open-mercato/ui/backend/utils/apiCall'
 
@@ -74,17 +75,26 @@ export function useBomLineVariants(lineIds: readonly string[]): BomLineVariantsR
     })),
   }) as UseQueryResult<BomLineVariantRow[], Error>[]
 
-  const variantsByLineId = new Map<string, BomLineVariantRow[]>()
-  const countsByLineId = new Map<string, number>()
-  const loadingLineIds = new Set<string>()
-  uniqueIds.forEach((id, index) => {
-    const q = queries[index]
-    if (q.isFetching) loadingLineIds.add(id)
-    if (q.data) {
-      variantsByLineId.set(id, q.data)
-      countsByLineId.set(id, q.data.length)
-    }
-  })
+  // Stable string fingerprint so downstream useMemo consumers don't
+  // invalidate on every render — see useBomLinesByHeader for rationale.
+  const uniqueIdsKey = uniqueIds.join('|')
+  const queriesFingerprint = queries
+    .map((q) => `${q.dataUpdatedAt ?? 0}:${q.isFetching ? 'f' : 's'}`)
+    .join('|')
 
-  return { variantsByLineId, countsByLineId, loadingLineIds }
+  return React.useMemo(() => {
+    const variantsByLineId = new Map<string, BomLineVariantRow[]>()
+    const countsByLineId = new Map<string, number>()
+    const loadingLineIds = new Set<string>()
+    uniqueIds.forEach((id, index) => {
+      const q = queries[index]
+      if (q.isFetching) loadingLineIds.add(id)
+      if (q.data) {
+        variantsByLineId.set(id, q.data)
+        countsByLineId.set(id, q.data.length)
+      }
+    })
+    return { variantsByLineId, countsByLineId, loadingLineIds } as BomLineVariantsResult
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uniqueIdsKey, queriesFingerprint])
 }

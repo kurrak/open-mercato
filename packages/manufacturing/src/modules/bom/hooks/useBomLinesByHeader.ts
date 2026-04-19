@@ -1,5 +1,6 @@
 'use client'
 
+import * as React from 'react'
 import { useQueries, type UseQueryResult } from '@tanstack/react-query'
 import { readApiResultOrThrow } from '@open-mercato/ui/backend/utils/apiCall'
 import type { BomLineRow } from '../components/BomTreeView'
@@ -59,13 +60,27 @@ export function useBomLinesByHeader(headerIds: readonly string[]): BomLinesByHea
     })),
   }) as UseQueryResult<BomLineRow[], Error>[]
 
-  const linesByHeader = new Map<string, BomLineRow[]>()
-  const loadingHeaderIds = new Set<string>()
-  uniqueIds.forEach((id, index) => {
-    const q = queries[index]
-    if (q.isFetching) loadingHeaderIds.add(id)
-    if (q.data) linesByHeader.set(id, q.data)
-  })
+  // Stable string fingerprint so downstream useMemo consumers don't
+  // invalidate on every render. dataUpdatedAt bumps only when React Query
+  // writes new data; isFetching captures transient loading state. Variable-
+  // length dep arrays are forbidden by React, so we collapse to a string.
+  const uniqueIdsKey = uniqueIds.join('|')
+  const queriesFingerprint = queries
+    .map((q) => `${q.dataUpdatedAt ?? 0}:${q.isFetching ? 'f' : 's'}`)
+    .join('|')
 
-  return { linesByHeader, loadingHeaderIds }
+  return React.useMemo(() => {
+    const linesByHeader = new Map<string, BomLineRow[]>()
+    const loadingHeaderIds = new Set<string>()
+    uniqueIds.forEach((id, index) => {
+      const q = queries[index]
+      if (q.isFetching) loadingHeaderIds.add(id)
+      if (q.data) linesByHeader.set(id, q.data)
+    })
+    return { linesByHeader, loadingHeaderIds } as BomLinesByHeaderResult
+    // uniqueIds + queries are intentionally not listed — they're fresh
+    // references per render; uniqueIdsKey + queriesFingerprint capture
+    // the identity we actually care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uniqueIdsKey, queriesFingerprint])
 }
