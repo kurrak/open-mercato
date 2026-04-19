@@ -288,8 +288,8 @@ function ValueCell({ attribute, values, onChange, disabled }: ValueCellProps) {
 
   if (attributeType === 'numeric_range') {
     // allowedValues here is {min, max, step} — not a discrete option set.
-    // For C1 the editor accepts free-text numeric entries; the per-range
-    // builder UX lands in Phase D polish.
+    // The editor accepts free-text numeric entries; a per-range builder
+    // UX is deferred.
     return (
       <TagsInput
         value={values}
@@ -373,7 +373,7 @@ function CatalogValueCell({ values, onChange, kind, categoryId, disabled }: Cata
   // or network blip would otherwise surface as an unhandled rejection.
   // Graceful degradation: show an empty suggestion list, user can still
   // type UUIDs manually (allowCustomValues happens to be false here, so
-  // the practical fallback is "no options" — acceptable for Phase C).
+  // the practical fallback is "no options").
   const loadAll = React.useCallback(async (): Promise<TagsInputOption[]> => {
     if (cacheRef.current) return cacheRef.current.options
 

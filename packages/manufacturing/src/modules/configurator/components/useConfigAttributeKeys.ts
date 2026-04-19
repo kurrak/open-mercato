@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { readApiResultOrThrow } from '@open-mercato/ui/backend/utils/apiCall'
 
 // Narrow view of a ConfigAttribute that the BOM-side VariantConditionEditor
@@ -30,56 +31,66 @@ type ConfigAttributeListItem = {
   product_filter_id?: string | null
 }
 
-const EMPTY_MAP: ReadonlyMap<string, ConfigAttributeMeta> = new Map()
+type ResolvedScope = {
+  keys: string[]
+  attributesByKey: ReadonlyMap<string, ConfigAttributeMeta>
+}
+
+const EMPTY_SCOPE: ResolvedScope = { keys: [], attributesByKey: new Map() }
+const STALE_TIME = 30_000
+
+async function fetchConfigAttributeScope(productId: string): Promise<ResolvedScope> {
+  try {
+    const data = await readApiResultOrThrow<{ items?: ConfigAttributeListItem[] }>(
+      `/api/configurator/manufacturing/config-attribute?productId=${encodeURIComponent(productId)}&pageSize=100&isActive=true`,
+      undefined,
+      { errorMessage: 'configurator scope fetch failed' },
+    )
+    const items = data?.items ?? []
+    const keys: string[] = []
+    const map = new Map<string, ConfigAttributeMeta>()
+    for (const item of items) {
+      const key = typeof item.key === 'string' ? item.key : null
+      if (!key) continue
+      keys.push(key)
+      map.set(key, {
+        key,
+        attributeType: typeof item.attribute_type === 'string' ? item.attribute_type : '',
+        allowedValues: item.allowed_values ?? null,
+        productFilterId: typeof item.product_filter_id === 'string' ? item.product_filter_id : null,
+      })
+    }
+    return { keys, attributesByKey: map }
+  } catch (err) {
+    console.warn('[configurator] failed to load config attribute keys', err)
+    return EMPTY_SCOPE
+  }
+}
 
 /**
  * Loads ConfigAttribute scope for a product — both the list of keys (used by
  * Graceful-Incompleteness "unknown key" warnings) and the richer per-key
  * metadata needed to drive the VariantConditionEditor's per-type value cell.
  *
- * Used by BOM tab (sub-spec b §3) and Routing tab (sub-spec c).
+ * Used by BOM tab (sub-spec b §3) and Routing tab (sub-spec c). Backed by
+ * React Query so multiple component instances with the same `productId`
+ * (e.g. every rendered row's VariantConditionBadges) share a single fetch.
  */
 export function useConfigAttributeKeys(productId: string | undefined): ConfigAttributeKeysResult {
-  const [state, setState] = React.useState<{ keys: string[]; attributesByKey: ReadonlyMap<string, ConfigAttributeMeta>; ready: boolean }>(
-    { keys: [], attributesByKey: EMPTY_MAP, ready: false },
-  )
+  const query = useQuery({
+    queryKey: ['manufacturing', 'configurator', 'attrs', productId ?? ''],
+    queryFn: () => fetchConfigAttributeScope(productId!),
+    enabled: !!productId,
+    staleTime: STALE_TIME,
+  })
 
-  React.useEffect(() => {
-    if (!productId) {
-      setState({ keys: [], attributesByKey: EMPTY_MAP, ready: false })
-      return
+  return React.useMemo<ConfigAttributeKeysResult>(() => {
+    if (!productId) return { keys: [], attributesByKey: EMPTY_SCOPE.attributesByKey, ready: false }
+    const scope = query.data ?? EMPTY_SCOPE
+    return {
+      keys: scope.keys,
+      attributesByKey: scope.attributesByKey,
+      ready: query.isSuccess || query.isError,
     }
-    let cancelled = false
-    readApiResultOrThrow<{ items?: ConfigAttributeListItem[] }>(
-      `/api/configurator/manufacturing/config-attribute?productId=${encodeURIComponent(productId)}&pageSize=100&isActive=true`,
-      undefined,
-      { errorMessage: '' },
-    )
-      .then((data) => {
-        if (cancelled) return
-        const items = data?.items ?? []
-        const nextKeys: string[] = []
-        const nextMap = new Map<string, ConfigAttributeMeta>()
-        for (const item of items) {
-          const key = typeof item.key === 'string' ? item.key : null
-          if (!key) continue
-          nextKeys.push(key)
-          nextMap.set(key, {
-            key,
-            attributeType: typeof item.attribute_type === 'string' ? item.attribute_type : '',
-            allowedValues: item.allowed_values ?? null,
-            productFilterId: typeof item.product_filter_id === 'string' ? item.product_filter_id : null,
-          })
-        }
-        setState({ keys: nextKeys, attributesByKey: nextMap, ready: true })
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.warn('[configurator] failed to load config attribute keys', err)
-        setState({ keys: [], attributesByKey: EMPTY_MAP, ready: true })
-      })
-    return () => { cancelled = true }
-  }, [productId])
-
-  return state
+  }, [productId, query.data, query.isSuccess, query.isError])
 }

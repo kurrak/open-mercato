@@ -24,6 +24,8 @@ import { useT } from '@open-mercato/shared/lib/i18n/context'
 import { Check, Circle, ExternalLink, Plus, Pencil, Trash2, Star } from 'lucide-react'
 import { useSubmitShortcut } from '../../../../lib/useSubmitShortcut'
 import { DetailSection, Select } from '../../../../lib/components'
+import { useIsBomReady } from '../../../bom/hooks/useIsBomReady'
+import { useBomHeaderNamesByIds } from '../../../bom/hooks/useBomHeaderNamesByIds'
 
 type ManufacturingExtension = {
   id: string
@@ -343,8 +345,26 @@ export default function OverviewTab({
 
   const selectedUom = uomOptions.find((u) => u.id === baseUomId)
   const activePms = productionMethods.filter((pm) => pm.lifecycleState === 'active')
-  const hasBom = productionMethods.some((pm) => pm.bomHeaderId != null)
+  // spec b §Readiness checklist integration — "ready" now requires at least
+  // one non-deleted BomLine under some active BomHeader, not just a
+  // PM-linked BomHeader. Brief false-positive flash on first render (hook
+  // starts false while fetching) is acceptable; planning consumers
+  // downstream depend on the stricter definition.
+  const hasBom = useIsBomReady(productId)
   const hasRouting = productionMethods.some((pm) => pm.routingTemplateId != null)
+
+  // Batch-resolve the PM-linked BomHeader names so each PM card shows the
+  // specific BOM it references (rather than every card showing the same
+  // "primary" name). Identity-stable ids memo so the hook's React Query
+  // cache key is stable across renders.
+  const pmBomHeaderIds = React.useMemo(
+    () =>
+      productionMethods
+        .map((pm) => pm.bomHeaderId)
+        .filter((id): id is string => typeof id === 'string'),
+    [productionMethods],
+  )
+  const bomHeaderNamesById = useBomHeaderNamesByIds(pmBomHeaderIds)
 
   const readiness: ReadinessItem[] = [
     { label: t('manufacturing.products.overview.readiness.manufacturingEnabled', 'Manufacturing enabled'), done: true },
@@ -512,7 +532,7 @@ export default function OverviewTab({
                       <span>v{pm.version}</span>
                       <span>
                         {pm.bomHeaderId
-                          ? t('bom.tab.title', 'BOM')
+                          ? (bomHeaderNamesById.get(pm.bomHeaderId) ?? t('bom.tab.title', 'BOM'))
                           : t('manufacturing.products.overview.productionMethods.noBom', 'No BOM')}
                       </span>
                       <span>

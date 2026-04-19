@@ -1,5 +1,13 @@
 'use client'
 
+// TODO(perf): each consuming component (e.g. each VariantConditionBadges
+// instance) calls this hook with only its own row's UUIDs, so different
+// per-row UUID subsets produce different React Query cache keys and fire
+// separate `?ids=...` fetches. See spec b §Future optimizations (deferred)
+// → "Catalog-lookup context-based aggregation" for a <CatalogLookupScope>
+// provider pattern that unions UUIDs across components into one fetch.
+// Pick up when paint-time latency becomes noticeable on large BOMs.
+
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { readApiResultOrThrow } from '@open-mercato/ui/backend/utils/apiCall'

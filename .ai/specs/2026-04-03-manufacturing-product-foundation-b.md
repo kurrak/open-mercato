@@ -478,10 +478,11 @@ defaultRoleFeatures: {
 
 #### 2. BOM header selector
 
-Two modes, user-togglable:
+Single combobox listing every BomHeader for this product (production + packaging usage). The first active header — sorted by `created_at asc` — is selected by default; the user can switch to any other BomHeader to view / edit its lines. Inactive headers appear with an "inactive" suffix in their label.
 
-- **Auto-resolve** (default): when the user provides config/variant in the explosion panel, the tab calls `POST /api/manufacturing/production-method/resolve` to find the best PM for the product, then uses its linked `bom_header_id`. User doesn't manually pick a BOM
-- **Manual override**: dropdown showing all BomHeaders for this product (production + packaging usage). For power users or when auto-resolution returns no match
+The selector is rendered only when the product has more than one BomHeader; with a single header the tab shell skips the selector entirely to reduce chrome in the common case.
+
+Snapshot-aware PM resolution (i.e. "pick the right BOM for the variant/config the user is about to explode") lives in the explosion panel (§7), not in this selector. The explosion panel calls `POST /api/manufacturing/production-method/resolve` with the user's inputs and uses the returned PM's `bom_header_id` directly — independent of the selector's current pick.
 
 #### 3. Shared VariantCondition components
 
@@ -524,30 +525,36 @@ Two modes, user-togglable:
 
 #### 4. BOM tree view
 
-Hierarchical expandable tree: BomHeader → BomLines. Empty state: "No bill of materials defined. Create BOM →" with primary button that opens the BomHeader create dialog.
+Recursive expandable tree: the selected top-level `BomHeader` renders its lines; each `line_type='semi_product'` line with a `child_bom_header_id` is a drill-in point that reveals the child header's lines nested in place. Empty state: "No bill of materials defined. Create BOM →" with primary button that opens the BomHeader create dialog.
 
-Each line row displays:
+**Column layout** (left-to-right):
 
-| Field | Display |
-|---|---|
-| Product | Static lines: Product name (with ProductVariant name appended when `product_variant_id` is pinned) linked to catalog product detail, or "Product not selected" placeholder with warning icon when both `product_id` and `product_resolve_key` are null. Dynamic lines: resolve-key badge (e.g., `⟶ fabric`); the runtime-resolved product name appears only in the explosion result panel (see §7) |
-| Line type | Badge: `material` / `semi_product` |
-| Quantity | `net_qty (gross_qty)` or "—" if null |
-| UoM | Code from `unit_of_measure` lookup or "—" |
-| Scrap % | Percentage or "0%" |
-| Variant condition | `VariantConditionBadges` (see §3). Empty / null → nothing shown. Unknown keys (not in `useConfigAttributeKeys(productId)`) render with muted/warning styling |
-| Operation | Linked operation name or "—" |
-| Date range | `valid_from – valid_to` or "Always" |
-| Consumable | Flag icon if true |
-| Phantom | Ghost icon on child BomHeader rows where `is_phantom=true` |
+| # | Column | Display |
+|---|---|---|
+| 1 | Expand | ▶/▼ only on `semi_product` rows with a non-null `child_bom_header_id`. Empty cell otherwise. Clicking fetches the child header's lines and renders them nested with `depth + 1` indent. Cycle guard: if a `child_bom_header_id` already appears in the current branch's ancestor chain, the arrow is rendered muted with a "Cycle detected" tooltip and expansion is blocked |
+| 2 | Product | Static lines: Product name (with ProductVariant name appended when `product_variant_id` is pinned) linked to catalog product detail, or "Product not selected" placeholder with warning icon when both `product_id` and `product_resolve_key` are null. Dynamic lines: resolve-key badge (e.g., `⟶ fabric`); the runtime-resolved product name appears only in the explosion result panel (see §7). Nested rows are indented by `depth * 16px` in this column |
+| 3 | Line type | Badge: `material` / `semi_product` |
+| 4 | Quantity | `net_qty (gross_qty)` or "—" if null |
+| 5 | UoM | Code from `unit_of_measure` lookup or "—" |
+| 6 | Scrap % | Percentage or "0%" |
+| 7 | Variant condition | `VariantConditionBadges` (see §3). **Master-perspective scope**: nested child rows use the **top-level master's `productId`** for the badge's scope argument (not the child header's owning product) — this matches explosion-time matcher semantics (see §BomLine Constraints + §Variant Condition Matching). Unknown keys render muted with a tooltip |
+| 8 | Operation | Linked operation name or "—" |
+| 9 | Date range | `valid_from – valid_to` or "Always" |
+| 10 | Flags | Consumable flag icon (C) / phantom-child ghost icon (on `semi_product` rows whose referenced child BomHeader has `is_phantom=true`) |
+| 11 | Variants | `+ Add` button (always visible, scoped to the current row's `bom_line_id`). When the line has ≥ 1 `BomLineVariant`, also shows `[N]` count badge + ▶/▼ toggle. Clicking ▼ reveals the inline variants section (see §6) as a full-width detail row under this line |
+| 12 | Actions | `edit` / `delete` row actions + reorder `up` / `down` icons (scoped to the parent header of the row — nested rows reorder within their own BomHeader, not across headers) |
 
-**Row actions** (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+**In-tree add affordance.** After the last real line of each rendered BomHeader (top-level and every expanded child), the tree renders a dashed muted pseudo-row: `[+ Add line]`. Clicking it opens the §5 BomLine CRUD dialog scoped to that `bomHeaderId`. This lets users add lines at any depth with one uniform gesture — there is no separate toolbar "Add material" / "Add sub-assembly" button; the dialog's `lineType` select covers both. Empty BomHeader → the pseudo-row is the only row, copy becomes "+ Add first line".
 
-**Reorder** uses `sort_order` increment/decrement via API. No drag-and-drop library in OM — explicit up/down buttons on each row.
+**Row actions** (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`.
+
+**Reorder** uses `sort_order` increment/decrement via API. No drag-and-drop library in OM — explicit up/down icons on each row. Reordering is scoped to the row's parent BomHeader — a nested child line can only move within its own header's ordering.
 
 #### 5. BOM line CRUD dialogs
 
-**Add Material / Add Sub-assembly** header buttons → `CrudForm` dialog with:
+**Entry points.** The dialog is opened from two places: (a) the in-tree `[+ Add line]` pseudo-row of any rendered BomHeader (see §4) — passes the owning `bomHeaderId`; (b) a row's `edit` action — passes the line being edited. There is no separate toolbar "Add material" / "Add sub-assembly" button; the dialog's `lineType` select covers both.
+
+`CrudForm` dialog with:
 
 - **Resolution mode** (segmented toggle): `Static` (default) vs `Dynamic`. Mutually exclusive — switches which product inputs render below. Dynamic mode is disabled when `line_type = 'semi_product'` (resolve key is material-only)
 - **When Static:**
@@ -570,7 +577,7 @@ Save always succeeds for incomplete data — a Static row with null `product_id`
 
 #### 6. BomLineVariant inline section
 
-Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant overrides for that line. Each override row shows:
+The §4 tree view's **Variants column** hosts both the add affordance (`+ Add`) and the toggle (`[N] ▶/▼` when overrides exist). Clicking ▼ opens a full-width detail row under the line containing the BomLineVariant overrides for that line. Each override row shows:
 
 - Variant identifier (CatalogProductVariant name or `VariantConditionBadges` on the override's `variant_condition` — see §3)
 - Quantity override (or "—")
@@ -613,7 +620,7 @@ Expand arrow on any BomLine reveals a nested rows area containing BomLineVariant
 
 Expose `useIsBomReady(productId): boolean` — returns `true` when at least one BomHeader with at least one non-soft-deleted BomLine exists for the product. Foundation overview tab calls this to flip BOM ○ → ✓.
 
-Also expose `useBomName(productId): { name: string | null; ready: boolean }` for the production method cards on the overview tab to display linked BOM names.
+Also expose `useBomHeaderNamesByIds(bomHeaderIds: readonly string[]): ReadonlyMap<string, string>` — batch UUID → name resolution backed by React Query. The overview tab's production-method cards each link to a specific `BomHeader` via `pm.bomHeaderId`, and the cards use this hook to render the name of that specific BomHeader rather than a product-wide "primary" name (different PMs can link to different BomHeaders). Missing ids render a fallback label.
 
 #### 9. Unit tests
 
@@ -649,6 +656,22 @@ Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts
 | B-UI-22 | Open BomLine dialog on a semi-product whose own ConfigAttributes is empty → key combobox is empty → type a free-text key (e.g., `fabric`) → pick values via the text fallback renderer → save → tree row renders `VariantConditionBadges` with the free-text key styled as "Unknown key" (tooltip references consuming-master runtime match) → editing the row reopens the editor with the same free-text key pre-selected | Shared VariantCondition UX — semi-product authoring with free-text keys (Graceful Incompleteness + no raw JSON) |
 
 **Testable outcome:** BOM tab visible in product detail. Add/edit lines with validated variant conditions and UoM selection. Expand variant overrides. Run explosion in all 5 adaptive panel states and see results. Overview tab reflects BOM readiness. All unit and integration tests pass. No raw JSON surface for `variant_condition` anywhere in the UI.
+
+#### 11. Future optimizations (deferred)
+
+Known performance opportunities that were intentionally not addressed in the initial tree-view / inline-section work. Each entry records the problem, a suggested direction, and a trigger condition for when it becomes worth doing. Do not pre-optimize — pick these up only when the trigger fires.
+
+**Batched BomLineVariants fetching.**
+- *Problem*: `useBomLineVariants` fires one `GET /api/bom/bom-line-variant?bomLineId=<id>` per rendered BomLine, eagerly, to populate the `[N] ▶/▼` count badge in the Variants column. A 37-line BOM produces 37 parallel requests; the per-request overhead (auth, DB round-trip) dominates even though each payload is small.
+- *Suggested direction*: add a plural `bomLineIds` filter (comma-separated UUIDs, same shape as the existing `ids` catch-all) to `/api/bom/bom-line-variant`'s `listSchema`; alternatively expose a dedicated `GET /api/bom/bom-header/<id>/variants` that returns every variant under the header scoped by its lines. The hook then fires a single request per BomHeader instead of per line.
+- *Trigger*: visible paint-time latency on real-world BOMs (50+ visible lines, or noticeably slower on dev-container / remote databases); or network-panel noise that distracts during debugging.
+
+**Catalog-lookup context-based aggregation.**
+- *Problem*: each `VariantConditionBadges` instance calls `useCatalogLookup` with only the UUIDs from its own row's condition. React Query dedupes by exact sorted-UUID signature, so different per-row UUID subsets produce different cache keys and therefore different `GET /api/catalog/products?ids=...` fetches. A BOM with many heterogeneous rows can issue 5–10 separate catalog fetches where one with the union would suffice.
+- *Suggested direction*: introduce a `<CatalogLookupScope>` provider wrapped around BomTab (and any other page that renders multiple Badges). Each Badges instance registers its UUIDs on mount; the provider aggregates into a union, fires a single `useCatalogLookup`, and exposes the resolved maps via context. Badges read from context when present, fall back to the self-contained hook when standalone (keeps the component usable outside a BomTab). See §Risks entry below for the implementation hazards (render loops, cleanup on collapse, re-fetch on expand).
+- *Trigger*: noticeable paint-time latency on large BOMs, or when backend team flags `/api/catalog/products` hit rate from the BOM tab.
+
+**Open risks for both optimizations.** The context-based aggregation in particular introduces render-loop / unmount-cleanup hazards documented in the 2026-04-19 discussion — mitigable but non-trivial. A dedicated review pass is expected when either is picked up.
 
 ## Risks & Impact Review
 
@@ -700,6 +723,13 @@ Tests in `packages/manufacturing/src/modules/bom/__integration__/bom-tab.spec.ts
 - **Affected area**: Impact analysis, catalog lifecycle
 - **Mitigation**: `product_resolve_key` references `ConfigAttribute.key`, not a specific Product — the dynamic Product relationship emerges only at runtime when a snapshot carrying that UUID is supplied to explosion. Out-of-scope for Phase 1 where-used. When catalog lifecycle management lands (ECM module, future phase), add a snapshot-aware resolve-key traversal that, given a candidate Product / ProductVariant UUID, enumerates the `ConfigAttribute` rows whose `product_filter_id` category contains it and then the BomLines whose `product_resolve_key` matches those attribute keys
 - **Residual risk**: A deleted Product / ProductVariant that was only reachable via a resolve-key path will surface as an unresolved line at the next explosion — `productId === null` + a per-line warning in `result.warnings[]` (ID not found in the expected catalog table) — same soft-error path as any other missing resolution. No silent data loss
+
+#### Recursive Tree View — Cycle + Performance Guards
+- **Scenario**: The §4 tree view drills into nested `semi_product` BomHeaders on expand. A corrupt row (sidestepping save-time cycle detection) or a very deep BOM (4+ levels) could cause infinite recursion or an N×M cold-start waterfall of child-header fetches
+- **Severity**: Low
+- **Affected area**: BOM tab responsiveness
+- **Mitigation**: Two guards. (a) Cycle guard — maintain an ancestor-chain `Set<bomHeaderId>` during tree flatten; a child whose id is already in the chain renders a muted arrow + "Cycle detected" tooltip and skips the expansion. (b) Lazy loading — children load on expand click only (not on mount); React Query caches by `bomHeaderId` so re-collapse/re-expand is free. Deep BOMs therefore load one header's lines per user interaction, not upfront
+- **Residual risk**: A user manually expanding every level of a 20-level BOM triggers 20 sequential fetches; acceptable — this is an authoring edge case, planning still goes through the explosion panel (§7) which preloads the full graph server-side
 
 #### Semi-Product Authoring Key Scope
 - **Scenario**: A user opens the BOM tab on a semi-product (e.g., "leg-kit sub-assembly") and edits a `variant_condition` or a `product_resolve_key` on one of its BomLines. The semi-product typically has no ConfigAttributes of its own; the keys the user actually wants belong to the *consuming master's* namespace (the chair that will embed the leg-kit). From the semi-product's page, the consuming master is unknowable — a semi-product may be embedded in multiple masters with conflicting key sets
@@ -815,6 +845,15 @@ No column drops beyond the two renames. No data loss scenarios (existing `materi
 ---
 
 ## Changelog
+
+### 2026-04-19
+- **BOM header selector simplified (§2 amendment).** Dropped the Auto/Manual mode toggle and mode label chrome in favor of a single combobox listing every BomHeader. First active header (sorted `created_at asc`) is selected by default; callers switch by picking from the dropdown. The selector is hidden entirely when the product has a single BomHeader (common case — no chrome needed). Snapshot-aware "pick the right BOM for this variant/config" lives in the explosion panel (§7), not here — the explosion panel calls `POST .../production-method/resolve` independently of whatever the selector currently shows. The runtime resolution flow is unchanged; this is a UI-only simplification.
+- **Tree view made recursive + Variants column added (§4 amendment).** Phase C §4 row display gains a dedicated Expand column (left-most) and a Variants column (near-rightmost); §6 now describes the overrides UX hosted by the Variants column rather than a separate full-row expand arrow. Runtime behavior unchanged.
+  - **Recursive drill-in.** `line_type='semi_product'` rows with a non-null `child_bom_header_id` render an expand arrow; clicking fetches the child header's lines and renders them inline with `depth + 1` indent. Cycle guard: maintain an ancestor-chain `Set<bomHeaderId>` during flatten; a duplicate skips the nest and shows a muted "Cycle detected" arrow. Reorder stays scoped to the row's parent BomHeader (a nested line moves within its own header's ordering, not across).
+  - **Master-perspective scope for nested `VariantConditionBadges`.** Child rows pass the **top-level master's `productId`** to `VariantConditionBadges` (not the child header's owning product) — matches explosion-time matcher semantics (runtime namespace is the top-level master's per §Variant Condition Matching). This is the first concrete use of the master-perspective pattern previously flagged as future work in §Risks *Semi-Product Authoring Key Scope*.
+  - **In-tree `[+ Add line]` pseudo-row.** After the last line of each rendered BomHeader (top-level and every expanded child), the tree renders a dashed muted pseudo-row that opens the §5 BomLine CRUD dialog scoped to that `bomHeaderId`. One uniform gesture adds lines at any depth; no separate toolbar button needed. Empty header → the pseudo-row becomes the only row, copy "+ Add first line". §5 entry points updated accordingly — the dialog's `lineType` select covers both material and sub-assembly cases.
+  - **Variants column (§6 merge).** Right-most content column before actions. Always shows `+ Add`; when the line has ≥ 1 BomLineVariant, adds `[N]` count badge + ▶/▼ toggle. Toggle reveals the §6 overrides section as a full-width detail row (`<td colSpan>`) beneath the line. Previously the spec reserved a row-level expand arrow for this — moving it into a dedicated column makes the affordance discoverable (count + Add visible at a glance) and composes cleanly with the new left-side drill-in arrow.
+  - **New risk — Recursive Tree View Cycle + Performance Guards.** Documents the cycle guard + React Query lazy-loading pattern and its acceptable residual (deep-BOM manual-expand waterfall, mitigated by the explosion panel's server-side preload for planning use cases).
 
 ### 2026-04-18
 - **Shared VariantCondition UX folded into Phase C.** Two explicit design clarifications + a new Phase C subsection so that `variant_condition` is never exposed as raw JSON in any user-facing surface.

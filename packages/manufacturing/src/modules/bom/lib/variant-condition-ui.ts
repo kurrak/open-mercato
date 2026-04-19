@@ -1,7 +1,7 @@
 /**
  * Pure transforms between the persisted `variant_condition` shape and the
  * internal representations consumed by the BOM-side shared UI components
- * (see spec b §Phase C §3).
+ * (see spec b §Shared VariantCondition components).
  *
  *   persisted:  Record<string, string[] | { not: string[] }> | null
  *   row:        { rowId: string, key: string, operator: 'in'|'not_in', values: string[] }  (editor)
