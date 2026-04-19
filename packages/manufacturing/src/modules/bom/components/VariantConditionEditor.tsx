@@ -366,6 +366,10 @@ type CatalogOptionCache = { options: TagsInputOption[] }
 
 function CatalogValueCell({ values, onChange, kind, categoryId, disabled }: CatalogValueCellProps) {
   const t = useT()
+  // Per-instance cache: a page with N editors issues N identical fetches
+  // for the same (kind, categoryId). Spec b §Future optimizations defers
+  // this to a "context-based aggregation" pass (also noted at the sibling
+  // useCatalogLookup hook). Acceptable for Phase C single-tab usage.
   const cacheRef = React.useRef<CatalogOptionCache | null>(null)
 
   // Wrapped in try/catch because TagsInput.loadSuggestions doesn't catch

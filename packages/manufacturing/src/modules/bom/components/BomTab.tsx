@@ -217,9 +217,14 @@ export default function BomTab({ productId, extension }: BomTabProps) {
     )
   }
 
-  if (headers.length === 0) {
-    return (
-      <div className="p-4">
+  // Empty + populated branches share one return so BomHeaderCreateDialog
+  // mounts exactly once regardless of whether any BomHeaders exist yet.
+  const isEmpty = headers.length === 0
+
+  return (
+    <TooltipProvider delayDuration={300}>
+    <div className="space-y-4 p-4">
+      {isEmpty ? (
         <EmptyState
           title={t('bom.tab.empty.title', 'No bill of materials defined')}
           description={t(
@@ -232,78 +237,70 @@ export default function BomTab({ productId, extension }: BomTabProps) {
             icon: <Plus className="size-4" />,
           }}
         />
-        <BomHeaderCreateDialog
-          open={createDialogOpen}
-          onOpenChange={setCreateDialogOpen}
-          onSubmit={handleCreateBomHeader}
-        />
-      </div>
-    )
-  }
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">{t('bom.tab.title', 'Bill of Materials')}</h3>
+            <div className="flex items-center gap-2">
+              {selectedId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteBom}
+                  className="text-red-600"
+                >
+                  <Trash2 className="size-4" />
+                  {t('bom.tab.deleteBom', 'Delete BOM')}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCreateDialogOpen(true)}
+              >
+                <Plus className="size-4" />
+                {t('bom.tab.addBom', 'Add BOM')}
+              </Button>
+              {selectedId ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    // Fresh panel state per open — see explosionDialogKey.
+                    setExplosionDialogKey((n) => n + 1)
+                    setExplosionDialogOpen(true)
+                  }}
+                >
+                  <Calculator className="size-4" />
+                  {t('bom.tab.explodeBom', 'Explode BOM')}
+                </Button>
+              ) : null}
+            </div>
+          </div>
 
-  return (
-    <TooltipProvider delayDuration={300}>
-    <div className="space-y-4 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium">{t('bom.tab.title', 'Bill of Materials')}</h3>
-        <div className="flex items-center gap-2">
-          {selectedId ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleDeleteBom}
-              className="text-red-600"
-            >
-              <Trash2 className="size-4" />
-              {t('bom.tab.deleteBom', 'Delete BOM')}
-            </Button>
+          {headers.length > 1 ? (
+            <BomHeaderSelector
+              headers={headers}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           ) : null}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setCreateDialogOpen(true)}
-          >
-            <Plus className="size-4" />
-            {t('bom.tab.addBom', 'Add BOM')}
-          </Button>
+
           {selectedId ? (
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                // Fresh panel state per open — see explosionDialogKey.
-                setExplosionDialogKey((n) => n + 1)
-                setExplosionDialogOpen(true)
-              }}
-            >
-              <Calculator className="size-4" />
-              {t('bom.tab.explodeBom', 'Explode BOM')}
-            </Button>
+            <BomTreeView
+              productId={productId}
+              bomHeaderId={selectedId}
+              reloadToken={reloadToken}
+              onReload={reload}
+              onEditLine={handleEditLine}
+              onAddLine={handleAddLine}
+              childBomPhantomById={childBomPhantomById}
+            />
           ) : null}
-        </div>
-      </div>
-
-      {headers.length > 1 ? (
-        <BomHeaderSelector
-          headers={headers}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-        />
-      ) : null}
-
-      {selectedId ? (
-        <BomTreeView
-          productId={productId}
-          bomHeaderId={selectedId}
-          reloadToken={reloadToken}
-          onReload={reload}
-          onEditLine={handleEditLine}
-          onAddLine={handleAddLine}
-          childBomPhantomById={childBomPhantomById}
-        />
-      ) : null}
+        </>
+      )}
 
       <BomHeaderCreateDialog
         open={createDialogOpen}
