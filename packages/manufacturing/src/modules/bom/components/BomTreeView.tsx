@@ -38,6 +38,7 @@ import {
   buildDisplayRows,
   type LineDisplayRow as GenericLineDisplayRow,
 } from '../lib/bom-tree-flatten'
+import { sortedIdsEqual } from '../lib/sorted-ids-equal'
 
 // ---------------------------------------------------------------------------
 // Row / display-row types
@@ -168,6 +169,16 @@ export function BomTreeView({
   // Recompute the desired union and commit if it differs. Runs after the
   // hook returns, so `childLinesByHeader` reflects this render's data and
   // next render's derived set will include grandchildren.
+  //
+  // Fixed-point invariant: `desired` is derived purely from
+  // `topLevelLines`, `expandedChildrenIds`, and already-loaded
+  // `childLinesByHeader` entries. It only grows when a semi-product row
+  // is expanded AND its child BOM's lines have loaded AND those lines
+  // introduce a new `child_bom_header_id`. Once every expanded row's
+  // descendants are loaded, the equality check below short-circuits,
+  // setFetchHeaderIds is skipped, and the effect no longer fires. If the
+  // equality check ever returns a false negative we loop forever — hence
+  // the extracted helper, so the check is testable in isolation.
   React.useEffect(() => {
     const desired = new Set<string>()
     const visit = (line: BomLineRow) => {
@@ -180,11 +191,7 @@ export function BomTreeView({
       lines.forEach(visit)
     }
     const sorted = Array.from(desired).sort()
-    const current = [...fetchHeaderIds]
-    const changed =
-      sorted.length !== current.length ||
-      sorted.some((id, i) => id !== current[i])
-    if (changed) setFetchHeaderIds(sorted)
+    if (!sortedIdsEqual(sorted, fetchHeaderIds)) setFetchHeaderIds(sorted)
   }, [topLevelLines, childLinesByHeader, expandedChildrenIds, fetchHeaderIds])
 
   // --- Display-row flatten -------------------------------------------------
