@@ -161,7 +161,7 @@ export default async function handle(
   const em = (container.resolve('em') as EntityManager).fork()
   const progressService = container.resolve('progressService') as ProgressService
 
-  const { progressJobId, bomHeaderId, variantConditions, effectiveDate, maxDepth, scope } = job.payload
+  const { progressJobId, bomHeaderId, variantConditions, variantId, effectiveDate, maxDepth, scope } = job.payload
   const progressCtx: ProgressServiceContext = {
     tenantId: scope.tenantId,
     organizationId: scope.organizationId,
@@ -244,6 +244,7 @@ export default async function handle(
       {
         bomHeaderId,
         variantConditions,
+        variantId,
         effectiveDate: new Date(effectiveDate),
         maxDepth,
       },

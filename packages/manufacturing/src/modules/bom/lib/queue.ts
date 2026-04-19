@@ -7,6 +7,7 @@ export type BomExplodeJobPayload = {
   progressJobId: string
   bomHeaderId: string
   variantConditions: Record<string, string>
+  variantId: string | null
   effectiveDate: string
   maxDepth: number
   scope: {

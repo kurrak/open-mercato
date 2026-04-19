@@ -522,7 +522,7 @@ describe('explodeBom', () => {
     expect(r3.lines[0].productId).toBe('mat-plywood')
   })
 
-  it('applies BomLineVariant override by variant_id', async () => {
+  it('applies BomLineVariant override by variant_id (variant_based mode)', async () => {
     const headers = [makeHeader({ id: 'bom-1' })]
     const lines = [
       makeLine({ id: 'line-1', bomHeaderId: 'bom-1', productId: 'mat-A', netQuantity: '10', uomId: 'uom-m' }),
@@ -542,17 +542,34 @@ describe('explodeBom', () => {
     ]
     const loader = createLoader(headers, lines, variants)
 
-    // variant_id matching is not driven by variantConditions input —
-    // it requires the explosion caller to pass a specific variantId.
-    // Currently the algorithm matches by variantCondition only for rule_based,
-    // and by variantId for variant_based. Since we don't pass variantId in the
-    // standard input, variant_id-based overrides don't match unless the caller
-    // pre-resolves. This test verifies the no-match path (base values used).
-    const result = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
-    expect(result.lines).toHaveLength(1)
-    expect(result.lines[0].quantity).toBe(10)
-    expect(result.lines[0].uomId).toBe('uom-m')
-    expect(result.lines[0].productId).toBe('mat-A')
+    // No variantId → no match → base values. Exercises the default
+    // ExplosionInput.variantId shape (optional; null ≡ undefined).
+    const base = await explodeBom(defaultInput('bom-1'), loader, emptyContext())
+    expect(base.lines).toHaveLength(1)
+    expect(base.lines[0].quantity).toBe(10)
+    expect(base.lines[0].uomId).toBe('uom-m')
+    expect(base.lines[0].productId).toBe('mat-A')
+
+    // Pass variantId='variant-red' → first override matches → quantity/uom
+    // swap. Product is untouched (productOverrideId is null on this row).
+    const red = await explodeBom(
+      defaultInput('bom-1', { variantId: 'variant-red' }),
+      loader,
+      emptyContext(),
+    )
+    expect(red.lines).toHaveLength(1)
+    expect(red.lines[0].quantity).toBe(15)
+    expect(red.lines[0].uomId).toBe('uom-mb')
+    expect(red.lines[0].productId).toBe('mat-A')
+
+    // Pass variantId='variant-blue' → second override matches → product swap.
+    const blue = await explodeBom(
+      defaultInput('bom-1', { variantId: 'variant-blue' }),
+      loader,
+      emptyContext(),
+    )
+    expect(blue.lines).toHaveLength(1)
+    expect(blue.lines[0].productId).toBe('mat-B')
   })
 
   it('handles separate child BOMs per variant (variant-conditional semi_product lines)', async () => {

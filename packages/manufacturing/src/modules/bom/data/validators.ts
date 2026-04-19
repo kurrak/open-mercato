@@ -265,6 +265,12 @@ export type BomLineVariantUpdateInput = z.infer<typeof bomLineVariantUpdateSchem
 export const bomExplosionInputSchema = scopedSchema.extend({
   bomHeaderId: uuid(),
   variantConditions: z.record(z.string(), z.string()).optional().default({}),
+  // Variant-based selection — the picked CatalogProductVariant. When set,
+  // Step 3 matches BomLineVariant.variant_id directly (orthogonal path to
+  // rule_based variant_condition matching). Nullable per Graceful
+  // Incompleteness: `configuration_type='variant_based'` products explode
+  // cleanly with no pick (no overrides match; base BomLines flow through).
+  variantId: uuid().nullable().optional(),
   effectiveDate: z.coerce.date().optional(),
   maxDepth: z.number().int().min(1).max(50).optional().default(10),
 })

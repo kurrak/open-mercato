@@ -334,45 +334,45 @@ Matching logic: for each key in `variant_condition`, check that the input's sing
 
 ## API Contracts
 
-All routes under `/api/manufacturing/`. CRUD routes use `makeCrudRoute` with `openApi` export.
+CRUD routes use `makeCrudRoute` with `openApi` export.
 
-**Route prefix convention:** Route files nested under `api/manufacturing/` to achieve `/api/manufacturing/` prefix (e.g., `api/manufacturing/bom/route.ts` → `/api/manufacturing/bom`). See sub-spec a for rationale.
+**Route prefix convention:** Route files live under each module's `api/<resource>/…` directory, producing `/api/<resource>/…` URLs (OM auto-discovery). For the bom module that maps to `api/bom/*/route.ts` → `/api/bom/*`. Pre-release spec notes referring to `/api/manufacturing/bom/…` predate this convention and have been aligned with the code.
 
 ### BOM Header
 
-- `GET /api/manufacturing/bom` — List (filtered by product_id, bom_usage, is_active)
-- `GET /api/manufacturing/bom/:id` — Detail (includes nested BomLines and BomLineVariants)
-- `POST /api/manufacturing/bom` — Create
-- `PUT /api/manufacturing/bom/:id` — Update
-- `DELETE /api/manufacturing/bom/:id` — Soft delete
+- `GET /api/bom/bom` — List (filtered by product_id, bom_usage, is_active)
+- `GET /api/bom/bom/:id` — Detail (includes nested BomLines and BomLineVariants)
+- `POST /api/bom/bom` — Create
+- `PUT /api/bom/bom/:id` — Update
+- `DELETE /api/bom/bom/:id` — Soft delete
 
 ### BOM Line
 
-- `GET /api/manufacturing/bom-line` — List (filtered by bom_header_id)
-- `GET /api/manufacturing/bom-line/:id` — Detail
-- `POST /api/manufacturing/bom-line` — Create (with cycle detection if child_bom_header_id set)
-- `PUT /api/manufacturing/bom-line/:id` — Update (with cycle detection if child_bom_header_id changed)
-- `DELETE /api/manufacturing/bom-line/:id` — Soft delete
+- `GET /api/bom/bom-line` — List (filtered by bom_header_id)
+- `GET /api/bom/bom-line/:id` — Detail
+- `POST /api/bom/bom-line` — Create (with cycle detection if child_bom_header_id set)
+- `PUT /api/bom/bom-line/:id` — Update (with cycle detection if child_bom_header_id changed)
+- `DELETE /api/bom/bom-line/:id` — Soft delete
 
 ### BOM Line Variant
 
-- `GET /api/manufacturing/bom-line-variant` — List (filtered by bom_line_id)
-- `GET /api/manufacturing/bom-line-variant/:id` — Detail
-- `POST /api/manufacturing/bom-line-variant` — Create
-- `PUT /api/manufacturing/bom-line-variant/:id` — Update
-- `DELETE /api/manufacturing/bom-line-variant/:id` — Soft delete
+- `GET /api/bom/bom-line-variant` — List (filtered by bom_line_id)
+- `GET /api/bom/bom-line-variant/:id` — Detail
+- `POST /api/bom/bom-line-variant` — Create
+- `PUT /api/bom/bom-line-variant/:id` — Update
+- `DELETE /api/bom/bom-line-variant/:id` — Soft delete
 
 ### BOM Explosion
 
-- `POST /api/manufacturing/bom/explode` — Async explosion. Queues worker, returns job ID.
-  - Request: `{ bomHeaderId: string, variantConditions?: Record<string, string>, effectiveDate?: string, maxDepth?: number }`
+- `POST /api/bom/bom/explode` — Async explosion. Queues worker, returns job ID.
+  - Request: `{ bomHeaderId: string, variantConditions?: Record<string, string>, variantId?: string | null, effectiveDate?: string, maxDepth?: number }`. `variantId` carries the picked CatalogProductVariant UUID for variant_based mode; Step 3 uses it to match `BomLineVariant.variant_id` overrides.
   - Response: `{ jobId: string }` (202 Accepted)
   - Progress tracked via OM's progress module
   - Result retrievable via progress endpoint when job completes. Each `lines[]` entry carries `productId` / `productVariantId` (null when Step 2 could not resolve and no override filled them); `result.warnings[]` carries per-line failure reasons keyed by `bomLineId`
 
 ### Where-Used Query
 
-- `GET /api/manufacturing/bom/where-used?productId=:uuid&productVariantId=:uuid` — Lists all BomHeaders that reference a given Product or ProductVariant. Matches on the master line's `product_id` / `product_variant_id` and on BomLineVariant's `product_override_id` / `product_variant_override_id`. `productVariantId` is optional — when omitted, matches at Product level only. Useful for impact analysis.
+- `GET /api/bom/bom/where-used?productId=:uuid&productVariantId=:uuid` — Lists all BomHeaders that reference a given Product or ProductVariant. Matches on the master line's `product_id` / `product_variant_id` and on BomLineVariant's `product_override_id` / `product_variant_override_id`. `productVariantId` is optional — when omitted, matches at Product level only. Useful for impact analysis.
 
   **Scope note:** The query does **not** traverse dynamic `product_resolve_key` lines, because their concrete product is only resolved at explosion time against a configuration snapshot. Traversing resolve-key lines would require a snapshot parameter and effectively re-run explosion. A dedicated "resolve-key where-used" is deferred (see §Risks).
 
@@ -475,6 +475,7 @@ defaultRoleFeatures: {
 - **Location**: `packages/manufacturing/src/modules/bom/components/BomTab.tsx` (exported and consumed by the product detail page from `2026-04-05-manufacturing-ui-foundation.md`)
 - **Props**: `{ productId: string; extension: ProductManufacturingExtension }`
 - **ACL feature**: `bom.view` for reads, `bom.create`/`bom.update`/`bom.delete` for writes, `bom.explode` for explosion
+- **Header actions**: the tab header exposes **Add BOM** (create a new BomHeader), **Delete BOM** (when a BOM is selected), and **Explode BOM** (when a BOM is selected) — the last opens the explosion panel in a modal (see §7). Keeping explode out of the always-on surface keeps the tree view as the primary authoring canvas and reserves dialog space for trial-and-error configuration runs.
 
 #### 2. BOM header selector
 
@@ -588,6 +589,8 @@ The §4 tree view's **Variants column** hosts both the add affordance (`+ Add`) 
 
 #### 7. BOM explosion panel
 
+**Dialog-hosted** — the panel is opened from the BomTab header's **Explode BOM** button (see §1) and rendered inside a modal rather than inline below the tree. This keeps the tree view the primary authoring surface and gives the form + result table their own dedicated space. Each open mounts a fresh panel instance (key-rotated on open) so trial-and-error configuration runs don't accumulate stale result rows or carry over the previous pick. The modal is `sm:max-w-4xl` wide so the 6-column result table reads cleanly; the dialog primitive handles scroll for tall results.
+
 **Adaptive form** — the explosion input UI adapts to what's defined. The "Explode BOM" button always works, even with incomplete data.
 
 **Configuration input switching** — the panel renders one of three input components based on `configuration_type`:
@@ -595,7 +598,7 @@ The §4 tree view's **Variants column** hosts both the add affordance (`+ Add`) 
 | `configuration_type` | Input Component | Output passed to explosion |
 |---|---|---|
 | `none` | Nothing — just "Explode BOM" button + effective date picker | `{}` — all lines always active |
-| `variant_based` | `VariantPicker` — CatalogProductVariant combobox (`/api/catalog/products/[productId]/variants`) + effective date | `{ catalogProductVariantId }` — matches BomLineVariant.catalog_product_variant_id |
+| `variant_based` | `VariantPicker` — CatalogProductVariant combobox (`/api/catalog/variants?productId=<uuid>`) + effective date | `{ variantId }` — matches `BomLineVariant.variant_id` at Step 3 |
 | `rule_based` | `ConfigurationForm` (from sub-spec d §3) + effective date | `{ variantConditions }` — calls configurator resolve first, then passes resolved conditions to explosion |
 
 **`VariantPicker` component**: simple searchable combobox of CatalogProductVariant records for this product. Located at `packages/manufacturing/src/modules/product_master/components/VariantPicker.tsx`. Shared by BOM explosion (this spec) and routing time rollup (sub-spec c §7).
@@ -610,8 +613,10 @@ The §4 tree view's **Variants column** hosts both the add affordance (`+ Add`) 
 | `rule_based`, no ConfigAttributes yet | Just button + effective date + message "No configuration attributes defined — explosion will include all unconditional BOM lines." Conditional lines skipped, warning shown in result |
 | Any type, BomLines have variant_conditions but no configurator/variants | Just button + effective date + warning "N lines have variant conditions but no configuration provided — conditional lines will be skipped" |
 
+**Pre-submit banner scope (implementation note).** The first landing of the panel implements only the `rule_based` / no-ConfigAttributes banner from the table above (the simplest case, resolvable from a single hook). The other four banners — each of which requires pre-fetching every BomLine of the selected BOM tree plus (for overrides) every BomLineVariant before the user clicks Explode — are deferred. Rationale: the same signals surface post-submit in `result.warnings[]` (e.g., conditional lines skipped, unknown resolve key, orphan conditions) and render identically in the warnings panel, so the functional outcome is covered; the pre-submit banners are UX polish that a later pass can bolt on once the panel needs extra chrome.
+
 - Effective date picker defaults to today, shown in all states for date-effective line filtering
-- **Submit flow**: "Explode BOM" button wrapped in `useGuardedMutation` (non-CrudForm write). On click: calls `POST /api/manufacturing/bom/explode` → returns `{ jobId }`. Then `useOperationProgress(jobId)` polls for completion (or SSE when DOM Event Bridge is wired). On success, renders result. On error, shows flash error. `useGuardedMutation` provides `retryLastMutation` in injection context for retry support.
+- **Submit flow**: "Explode BOM" button wrapped in `useGuardedMutation` (non-CrudForm write). On click: calls `POST /api/bom/bom/explode` → returns `{ jobId }`, then polls `GET /api/progress/jobs/{jobId}` until terminal status (`completed` / `failed`). A dialog-close during an in-flight poll cancels the loop silently via a mount-scoped cancellation ref; the server-side job continues to completion and is simply no longer observed. `useOperationProgress(jobId)` is the preferred hook once `bom.explosion.progress` is wired through the DOM Event Bridge (`clientBroadcast: true`); until then polling is the implementation choice and the poll cadence (short initial wait, then 400 ms) matches the integration-test helper. On error, shows flash error. `useGuardedMutation` provides `retryLastMutation` in injection context for retry support.
 - **Result display:**
   - **Flat material list**: product name (+ variant name when present), quantity, UoM, gross quantity, level, source BOM, and a `Resolution` column showing `static` / `resolved (key)` / **`unresolved (key)`** per row. The column value is computed in the UI from the pair `(ExplosionLine.productId, master BomLine.product_resolve_key)` — no dedicated status field on the output. Unresolved rows (`productId === null` and master had a resolve key) are rendered with a muted/greyed style and a "Not in planning" badge so they are visible but not confused with planned demand
   - **Warnings panel** (collapsible): "2 lines skipped: null product_id and no product_resolve_key", "3 conditional lines skipped: no configuration provided", "1 line unresolved: resolve key 'fabric' missing from snapshot", etc.
@@ -847,6 +852,8 @@ No column drops beyond the two renames. No data loss scenarios (existing `materi
 ## Changelog
 
 ### 2026-04-19
+- **Explosion panel hosted in a modal (§1 + §7 amendment).** The BomTab header gains an **Explode BOM** action button (next to **Add BOM** / **Delete BOM**); clicking opens the §7 panel inside a `sm:max-w-4xl` dialog rather than rendering it inline below the tree. Each open mounts a fresh panel instance (key rotated on open) so stale result rows and previously-picked variants do not carry over between trial-and-error runs. Rationale: keeps the tree view the primary authoring surface, and trial-and-error configuration runs (which can produce large result tables) get their own dedicated space instead of pushing the tree off-screen. The adaptive form, submit flow, result table, and warnings panel defined in §7 are unchanged — only the hosting surface moved.
+- **C6 BOM explosion panel code-review fixes.** (a) Warnings-panel toggle converted from raw `<button>` to `<Button variant="ghost">` to comply with the UI contract (packages/ui/AGENTS.md "MUST NOT use raw `<button>`"). (b) Polling loop now short-circuits on a mount-scoped cancellation ref so closing the dialog mid-flight stops the loop immediately (server-side job continues, just un-observed); §7 submit-flow prose updated accordingly. (c) Missing `manufacturing.variantPicker.*` keys added across all four locales in `product_master/i18n/`. (d) Dead `.replace('{count}'|'{key}', …)` calls dropped on strings that never had the placeholders. (e) Busy indicator upgraded from bare text to `<Spinner size="sm"> + text`. (f) `useGuardedMutation` context entityId changed from the pseudo-handle `bom:explode` to the real `bom:bom_header` with `operation: 'explode'` so guard-injection widgets key off a real entity. (g) `readApiResultOrThrow` call in `useBomLineResolveKeys` now carries a meaningful `errorMessage`. (h) `/api/manufacturing/bom/…` paths throughout §API Contracts + §7 aligned with the actual code URLs (`/api/bom/bom/…`, etc.) — the old prefix convention note was pre-release drift. (i) `{ catalogProductVariantId }` payload placeholder replaced with `{ variantId }` to match the end-to-end implementation (validator + worker + queue). (j) Pre-submit banner scope clarified: only the `rule_based` / no-ConfigAttributes banner lands in this pass; the other four banners require pre-fetching all BomLines + BomLineVariants and are deferred since the same signals surface post-submit in `result.warnings[]` and render identically in the warnings panel.
 - **BOM header selector simplified (§2 amendment).** Dropped the Auto/Manual mode toggle and mode label chrome in favor of a single combobox listing every BomHeader. First active header (sorted `created_at asc`) is selected by default; callers switch by picking from the dropdown. The selector is hidden entirely when the product has a single BomHeader (common case — no chrome needed). Snapshot-aware "pick the right BOM for this variant/config" lives in the explosion panel (§7), not here — the explosion panel calls `POST .../production-method/resolve` independently of whatever the selector currently shows. The runtime resolution flow is unchanged; this is a UI-only simplification.
 - **Tree view made recursive + Variants column added (§4 amendment).** Phase C §4 row display gains a dedicated Expand column (left-most) and a Variants column (near-rightmost); §6 now describes the overrides UX hosted by the Variants column rather than a separate full-row expand arrow. Runtime behavior unchanged.
   - **Recursive drill-in.** `line_type='semi_product'` rows with a non-null `child_bom_header_id` render an expand arrow; clicking fetches the child header's lines and renders them inline with `depth + 1` indent. Cycle guard: maintain an ancestor-chain `Set<bomHeaderId>` during flatten; a duplicate skips the nest and shows a muted "Cycle detected" arrow. Reorder stays scoped to the row's parent BomHeader (a nested line moves within its own header's ordering, not across).

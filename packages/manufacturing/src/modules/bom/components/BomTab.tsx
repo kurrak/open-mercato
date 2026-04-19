@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Calculator } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import { useListLoader } from '../../../lib/useListLoader'
 import { BomHeaderSelector, type BomHeaderOption } from './BomHeaderSelector'
 import { BomTreeView, type BomLineRow } from './BomTreeView'
 import { BomLineDialog } from './BomLineDialog'
+import { BomExplosionPanel } from './BomExplosionPanel'
 import {
   BOM_HEADER_DEFAULT_VALUES,
   buildBomHeaderFormFields,
@@ -40,12 +41,10 @@ type BomHeaderListRow = {
 
 const PAGE_SIZE = 100
 
-// Forward-compatible BomTab props. The explosion panel (§7) needs the
-// product's manufacturing extension to pick its input mode (none /
-// variant_based / rule_based), so the prop is already accepted here;
-// downstream usage lands with the panel. The parent currently only passes
-// `productId` — keep `extension` optional so that call site doesn't need
-// updating ahead of the explosion panel.
+// The explosion panel (§7) needs the product's manufacturing extension to
+// pick its input mode (none / variant_based / rule_based). The parent page
+// always has the extension loaded before rendering this tab, so extension
+// is non-optional from C6 onward.
 export type BomTabExtension = {
   id: string
   productId: string
@@ -57,10 +56,10 @@ export type BomTabExtension = {
 
 export type BomTabProps = {
   productId: string
-  extension?: BomTabExtension
+  extension: BomTabExtension
 }
 
-export default function BomTab({ productId }: BomTabProps) {
+export default function BomTab({ productId, extension }: BomTabProps) {
   const t = useT()
   const queryClient = useQueryClient()
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
@@ -71,6 +70,11 @@ export default function BomTab({ productId }: BomTabProps) {
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [reloadToken, setReloadToken] = React.useState(0)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
+  // One-shot counter keyed into BomExplosionPanel to force a fresh mount on
+  // each dialog open — wipes any lingering result / picked inputs from a
+  // previous explode so the user starts clean.
+  const [explosionDialogOpen, setExplosionDialogOpen] = React.useState(false)
+  const [explosionDialogKey, setExplosionDialogKey] = React.useState(0)
 
   const reload = React.useCallback(() => setReloadToken((n) => n + 1), [])
 
@@ -264,6 +268,20 @@ export default function BomTab({ productId }: BomTabProps) {
             <Plus className="size-4" />
             {t('bom.tab.addBom', 'Add BOM')}
           </Button>
+          {selectedId ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => {
+                // Fresh panel state per open — see explosionDialogKey.
+                setExplosionDialogKey((n) => n + 1)
+                setExplosionDialogOpen(true)
+              }}
+            >
+              <Calculator className="size-4" />
+              {t('bom.tab.explodeBom', 'Explode BOM')}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -292,6 +310,25 @@ export default function BomTab({ productId }: BomTabProps) {
         onOpenChange={setCreateDialogOpen}
         onSubmit={handleCreateBomHeader}
       />
+
+      {selectedId ? (
+        <Dialog
+          open={explosionDialogOpen}
+          onOpenChange={(next) => setExplosionDialogOpen(next)}
+        >
+          <DialogContent className="sm:max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>{t('bom.tab.explodeDialog.title', 'Explode BOM')}</DialogTitle>
+            </DialogHeader>
+            <BomExplosionPanel
+              key={explosionDialogKey}
+              productId={productId}
+              bomHeaderId={selectedId}
+              extension={extension}
+            />
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {lineDialogState ? (
         <BomLineDialog

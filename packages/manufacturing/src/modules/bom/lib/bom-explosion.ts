@@ -111,6 +111,11 @@ export type ExplosionInput = {
   // Filter arrays on BomLine.variant_condition itself stay as arrays —
   // matchVariantCondition does scalar-in-array inclusion.
   variantConditions: Record<string, string>
+  // Picked CatalogProductVariant for variant_based products. When set, Step 3
+  // matches BomLineVariant.variant_id directly (orthogonal to rule_based
+  // variant_condition matching). Null for rule_based and for variant_based
+  // products where the user didn't pick a variant.
+  variantId?: string | null
   effectiveDate: Date
   maxDepth: number
 }
@@ -429,12 +434,15 @@ export async function explodeBom(
       const pendingMessages: string[] = []
       if (step2.warning) pendingMessages.push(step2.warning)
 
-      // Step 3: BomLineVariant override (pair semantics).
+      // Step 3: BomLineVariant override (pair semantics). `variantId` is the
+      // picked CatalogProductVariant for variant_based mode (orthogonal to
+      // variantConditions matching for rule_based).
       const overrides = applyLineVariantOverrides(
         line,
         allVariants,
         input.variantConditions,
         { productId: step2.productId, productVariantId: step2.productVariantId },
+        input.variantId ?? undefined,
       )
       if (overrides.warning) pendingMessages.push(overrides.warning)
 

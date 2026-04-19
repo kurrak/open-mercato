@@ -51,6 +51,7 @@ export async function POST(req: Request) {
       progressJobId: progressJob.id,
       bomHeaderId: parsed.bomHeaderId,
       variantConditions: parsed.variantConditions,
+      variantId: parsed.variantId ?? null,
       effectiveDate: (parsed.effectiveDate ?? new Date()).toISOString(),
       maxDepth: parsed.maxDepth,
       scope: {
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
 const explosionRequestSchema = z.object({
   bomHeaderId: z.string().uuid(),
   variantConditions: z.record(z.string(), z.string()).optional().default({}),
+  variantId: z.string().uuid().nullable().optional(),
   effectiveDate: z.string().optional(),
   maxDepth: z.number().int().optional(),
 })
