@@ -60,10 +60,10 @@ export type OperationTemplatesForProductResult = {
  *
  * Future signature: once the routing tab ships, this hook will scope the
  * query to operations belonging to the product's PM-linked
- * `routingTemplateId`s — tracked in spec b §5 and in the "Deferred from
- * C3" note in the Moldo Phase C plan. Current call sites already pass
- * `productId`; the plumbing lives in `BomLineDialog.tsx` ready to light
- * up when the hook uses it.
+ * `routingTemplateId`s — tracked in spec b §5 under the "Deferred from the
+ * BomLine CRUD dialog implementation" changelog note. Current call sites
+ * already pass `productId`; the plumbing lives in `BomLineDialog.tsx`
+ * ready to light up when the hook uses it.
  */
 export function useOperationTemplatesForProduct(productId: string): OperationTemplatesForProductResult {
   // TODO: scope by PM-linked routingTemplateId once the routing tab UI ships.

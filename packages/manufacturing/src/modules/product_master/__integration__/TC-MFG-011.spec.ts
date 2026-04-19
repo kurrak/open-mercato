@@ -15,7 +15,7 @@ import {
  *
  * Mirrors TC-MFG-001 for the production-method update/delete surface. The
  * spec's §Data Model pins a tenant-scoped constraint on the ProductionMethod
- * entity; prior to the C3 fix the command's `em.findOne(ProductionMethod,
+ * entity; prior to the tenant-scope fix the command's `em.findOne(ProductionMethod,
  * { id })` lookups had no org/tenant filter, so a user in tenant A who
  * happened to learn a tenant-B UUID could PUT/DELETE it and even re-apply
  * the action via the undo path. This test exercises the happy path for
@@ -81,7 +81,7 @@ test.describe('TC-MFG-011: Production Method command scoping', () => {
       pmIds.push(firstPmId)
 
       // Scoped lookup: PUT with a random UUID must 404, not leak or silently
-      // succeed. Prior to C3 fix this silently succeeded because the command
+      // succeed. Prior to the tenant-scope fix this silently succeeded because the command
       // used em.findOne({ id }) without org/tenant filters.
       const updateForeign = await apiRequest(
         request,

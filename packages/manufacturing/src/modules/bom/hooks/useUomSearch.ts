@@ -23,7 +23,7 @@ const UOM_CACHE_KEY = ['manufacturing', 'bom-line-dialog', 'uom'] as const
 async function fetchUoms(): Promise<UomOption[]> {
   // Errors intentionally propagate — React Query surfaces them to the
   // caller so the UI can render an error hint instead of silently showing
-  // an empty combobox (which masked a wrong-endpoint bug during C3 review).
+  // an empty combobox (which masked a wrong-endpoint bug during review).
   const data = await readApiResultOrThrow<{ items?: UomListItem[] }>(
     `/api/product_master/manufacturing/unit-of-measure?pageSize=100&isActive=true`,
     undefined,

@@ -44,7 +44,7 @@ const PAGE_SIZE = 100
 // The explosion panel (§7) needs the product's manufacturing extension to
 // pick its input mode (none / variant_based / rule_based). The parent page
 // always has the extension loaded before rendering this tab, so extension
-// is non-optional from C6 onward.
+// is non-optional.
 export type BomTabExtension = {
   id: string
   productId: string
