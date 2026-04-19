@@ -755,6 +755,17 @@ function ChildBomPickerField({ value, setValue, productId, disabled }: ChildBomP
   const { options, isLoading, isError, invalidate } = useBomHeadersForProduct(productId)
   const [createOpen, setCreateOpen] = React.useState(false)
   const current = typeof value === 'string' ? value : ''
+  // Hooks MUST be called before any early return — productId flips from empty
+  // to a UUID after the user picks a product, and a conditional useCallback
+  // would change the hook order across renders.
+  const handleCreateSuccess = React.useCallback(
+    (created: { id: string }) => {
+      setValue(created.id)
+      invalidate()
+      setCreateOpen(false)
+    },
+    [setValue, invalidate],
+  )
 
   if (!productId) {
     return (
@@ -770,15 +781,6 @@ function ChildBomPickerField({ value, setValue, productId, disabled }: ChildBomP
     description: h.bomUsage !== 'production' ? h.bomUsage : undefined,
   }))
   const resolveLabel = (id: string) => options.find((h) => h.id === id)?.name ?? id
-
-  const handleCreateSuccess = React.useCallback(
-    (created: { id: string }) => {
-      setValue(created.id)
-      invalidate()
-      setCreateOpen(false)
-    },
-    [setValue, invalidate],
-  )
 
   return (
     <>

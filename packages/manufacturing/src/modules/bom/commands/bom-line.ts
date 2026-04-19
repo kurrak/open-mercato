@@ -160,16 +160,19 @@ const createBomLineCommand: CommandHandler<BomLineCreateInput, { bomLineId: stri
     // A hardening pass can add a pessimistic lock on the parent header or
     // a UNIQUE (bom_header_id, sort_order) constraint with retry.
     //
-    // Implementation note: MAX via QueryBuilder aggregate rather than
-    // loading all rows — constant-time regardless of BOM size.
+    // Implementation note: raw parameterized SQL rather than QueryBuilder
+    // — MikroORM's QB splits `bl.sort_order` on the dot even inside an
+    // aggregate (`max(bl.sort_order)` → `"max(bl"."sort_order)"`), which
+    // postgres rejects with "missing FROM-clause entry for table max(bl".
+    // The aggregate is constant-time regardless of BOM size.
     let resolvedSortOrder: number
     if (typeof parsed.sortOrder === 'number') {
       resolvedSortOrder = parsed.sortOrder
     } else {
-      const maxRow = await em.createQueryBuilder(BomLine, 'bl')
-        .select('max(bl.sort_order) as max_sort_order', true)
-        .where({ bomHeader: { id: parsed.bomHeaderId }, deletedAt: null })
-        .execute<Array<{ max_sort_order: number | null }>>('all')
+      const maxRow = await em.getConnection().execute<Array<{ max_sort_order: number | null }>>(
+        'select max(sort_order) as max_sort_order from manufacturing_bom_lines where bom_header_id = ? and deleted_at is null',
+        [parsed.bomHeaderId],
+      )
       const maxSort = maxRow[0]?.max_sort_order ?? -1
       resolvedSortOrder = maxSort + 1
     }
