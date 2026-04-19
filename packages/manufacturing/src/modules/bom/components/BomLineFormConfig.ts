@@ -2,7 +2,11 @@
 
 import type { CrudField } from '@open-mercato/ui/backend/CrudForm'
 import type { BomLineRow } from './BomTreeView'
-import { parseDisplayEntries } from '../lib/variant-condition-ui'
+import { normalizeVariantCondition } from '../lib/variant-condition-ui'
+
+// Re-export so existing import paths (`from './BomLineFormConfig'`) keep
+// working — the source of truth now lives in the shared lib.
+export { normalizeVariantCondition }
 
 // Shape of form values — mirrors BomLineCreate/Update payload with UI-
 // friendly types (empty string instead of null for text inputs, etc.).
@@ -79,22 +83,6 @@ export function bomLineToFormValues(row: BomLineRow): BomLineFormValues {
   }
 }
 
-// Normalize a persisted variantCondition payload to the editor's expected
-// shape. Rather than blindly casting, we route through the shared
-// `parseDisplayEntries` helper so only well-formed entries survive — a
-// corrupt nested shape (non-array under a key, wrong `{not: …}` payload)
-// is filtered out rather than crashing the editor on mount. The server
-// Zod still validates on save; this is a client-side defense-in-depth.
-export function normalizeVariantCondition(raw: unknown): Record<string, string[] | { not: string[] }> | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const entries = parseDisplayEntries(raw as Record<string, string[] | { not: string[] }>)
-  if (entries.length === 0) return null
-  const out: Record<string, string[] | { not: string[] }> = {}
-  for (const entry of entries) {
-    out[entry.key] = entry.operator === 'not_in' ? { not: entry.values } : entry.values
-  }
-  return out
-}
 
 // --------------------------------------------------------------------------
 // Create / Update payload builders — accept the form values and produce a

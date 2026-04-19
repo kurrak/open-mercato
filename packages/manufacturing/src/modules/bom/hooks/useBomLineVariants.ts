@@ -19,6 +19,7 @@ export type BomLineVariantRow = {
   product_variant_override_id: string | null
   unit_override_id: string | null
   sort_order: number
+  notes: string | null
 }
 
 const PAGE_SIZE = 100

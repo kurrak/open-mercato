@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@open-mercato/ui/primitives/badge'
+import { Button } from '@open-mercato/ui/primitives/button'
 import { IconButton } from '@open-mercato/ui/primitives/icon-button'
 import { flash } from '@open-mercato/ui/backend/FlashMessages'
 import { useConfirmDialog } from '@open-mercato/ui/backend/confirm-dialog'
@@ -11,6 +12,7 @@ import { useGuardedMutation } from '@open-mercato/ui/backend/injection/useGuarde
 import { deleteCrud } from '@open-mercato/ui/backend/utils/crud'
 import { useT } from '@open-mercato/shared/lib/i18n/context'
 import { VariantConditionBadges } from './VariantConditionBadges'
+import { BomLineVariantDialog } from './BomLineVariantDialog'
 import { useCatalogLookup } from '../hooks/useCatalogLookup'
 import { useUomLookup } from '../hooks/useUomLookup'
 import type { BomLineVariantRow } from '../hooks/useBomLineVariants'
@@ -22,19 +24,23 @@ export type BomLineVariantsSectionProps = {
   // `variant_condition` pills on BomLineVariant rows (matches explosion-
   // time semantics per spec b §Variant Condition Matching).
   masterProductId: string
+  // The BomLine these overrides belong to — required by the
+  // BomLineVariantDialog to set `bomLineId` on new overrides.
+  bomLineId: string
   onReload: () => void
 }
 
 /**
  * Inline detail content for a BomLine's Variants column expansion
- * (see spec b §BomLineVariant inline section). Read-only display +
- * delete; Add/Edit open a placeholder flash until the BomLineVariant
- * dialog lands (with XOR activation + drift-guarded Product+ProductVariant
- * override pair).
+ * (see spec b §BomLineVariant inline section). Display + add / edit /
+ * delete. The dialog enforces activation XOR (variantId OR
+ * variantCondition) + the drift-guarded Product+ProductVariant override
+ * pair at authoring time; server-side invariants are the backstop.
  */
 export function BomLineVariantsSection({
   variants,
   masterProductId,
+  bomLineId,
   onReload,
 }: BomLineVariantsSectionProps) {
   const t = useT()
@@ -85,9 +91,13 @@ export function BomLineVariantsSection({
           operation: async () => {
             await deleteCrud('bom/bom-line-variant', row.id)
             flash(t('bom.variants.deleteSuccess', 'Override deleted.'), 'success')
-            // Invalidate the variants cache so the count badge and list
-            // refresh immediately instead of staying stale for staleTime.
-            queryClient.invalidateQueries({ queryKey: ['manufacturing', 'bom', 'line-variants'] })
+            // Targeted invalidation — just this line's variants cache,
+            // not the whole ['manufacturing', 'bom', 'line-variants']
+            // prefix. A broader invalidation would refetch every visible
+            // line's variant list unnecessarily.
+            queryClient.invalidateQueries({
+              queryKey: ['manufacturing', 'bom', 'line-variants', row.bom_line_id],
+            })
             onReload()
           },
         })
@@ -98,53 +108,73 @@ export function BomLineVariantsSection({
     [confirm, runMutation, retryLastMutation, queryClient, onReload, t],
   )
 
-  const handleAddStub = React.useCallback(() => {
-    flash(
-      t('bom.variants.addComingSoon', 'Variant override dialog is not implemented yet — use seeded data for now.'),
-      'info',
-    )
-  }, [t])
+  // Dialog state — tracks add vs edit modes and holds the row being
+  // edited so `BomLineVariantDialog` can preload its form values.
+  const [dialogState, setDialogState] = React.useState<
+    | { mode: 'add' }
+    | { mode: 'edit'; row: BomLineVariantRow }
+    | null
+  >(null)
 
-  const handleEditStub = React.useCallback(() => {
-    flash(
-      t('bom.variants.editComingSoon', 'Variant override edit dialog is not implemented yet — use seeded data for now.'),
-      'info',
-    )
-  }, [t])
+  const handleAdd = React.useCallback(() => {
+    setDialogState({ mode: 'add' })
+  }, [])
+
+  const handleEdit = React.useCallback((row: BomLineVariantRow) => {
+    setDialogState({ mode: 'edit', row })
+  }, [])
+
+  const handleDialogSuccess = React.useCallback(() => {
+    setDialogState(null)
+    // Targeted invalidation — refresh only this line's variants cache
+    // (count badge + inline list) instead of relying on the parent tree's
+    // broader reloadToken bump to propagate.
+    queryClient.invalidateQueries({
+      queryKey: ['manufacturing', 'bom', 'line-variants', bomLineId],
+    })
+    onReload()
+  }, [bomLineId, queryClient, onReload])
+
+  const dialogNode = dialogState ? (
+    <BomLineVariantDialog
+      open
+      onOpenChange={(next) => { if (!next) setDialogState(null) }}
+      masterProductId={masterProductId}
+      bomLineId={bomLineId}
+      editingVariant={dialogState.mode === 'edit' ? dialogState.row : null}
+      onSuccess={handleDialogSuccess}
+    />
+  ) : null
 
   if (variants.length === 0) {
     return (
-      <div className="rounded-md border border-dashed bg-muted/10 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            {t('bom.variants.none', 'No overrides on this line.')}
-          </span>
-          <button
-            type="button"
-            className="text-sm text-primary hover:underline"
-            onClick={handleAddStub}
-          >
-            {t('bom.variants.addCta', '+ Add override')}
-          </button>
+      <>
+        <div className="rounded-md border border-dashed bg-muted/10 p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">
+              {t('bom.variants.none', 'No overrides on this line.')}
+            </span>
+            <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={handleAdd}>
+              {t('bom.variants.addCta', '+ Add override')}
+            </Button>
+          </div>
+          {ConfirmDialogElement}
         </div>
-        {ConfirmDialogElement}
-      </div>
+        {dialogNode}
+      </>
     )
   }
 
   return (
+    <>
     <div className="rounded-md border bg-muted/10">
       <div className="flex items-center justify-between border-b bg-muted/30 px-3 py-2">
         <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('bom.variants.sectionLabel', 'Variant overrides')}
         </span>
-        <button
-          type="button"
-          className="text-sm text-primary hover:underline"
-          onClick={handleAddStub}
-        >
+        <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={handleAdd}>
           {t('bom.variants.addCta', '+ Add override')}
-        </button>
+        </Button>
       </div>
       <table className="w-full">
         <thead>
@@ -208,7 +238,7 @@ export function BomLineVariantsSection({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={handleEditStub}
+                    onClick={() => handleEdit(v)}
                     aria-label={t('bom.variants.action.edit', 'Edit override')}
                   >
                     <Pencil className="size-4" />
@@ -230,5 +260,7 @@ export function BomLineVariantsSection({
       </table>
       {ConfirmDialogElement}
     </div>
+    {dialogNode}
+    </>
   )
 }

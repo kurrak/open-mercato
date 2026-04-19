@@ -403,6 +403,7 @@ export function BomTreeView({
                         <BomLineVariantsSection
                           variants={variantsByLineId.get(row.line.id) ?? []}
                           masterProductId={productId}
+                          bomLineId={row.line.id}
                           onReload={onReload}
                         />
                       </div>

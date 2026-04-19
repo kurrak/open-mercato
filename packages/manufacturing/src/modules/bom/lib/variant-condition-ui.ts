@@ -105,3 +105,26 @@ export function collectCatalogIds(
   }
   return { productIds, variantIds }
 }
+
+/**
+ * Normalize a persisted variantCondition payload to the shape the editor
+ * expects. Routes through `parseDisplayEntries` so only well-formed
+ * entries survive — a corrupt nested shape (non-array under a key, wrong
+ * `{not: …}` payload) is filtered out rather than crashing the editor on
+ * mount. The server Zod still validates on save; this is a client-side
+ * defense-in-depth.
+ *
+ * Promoted from `BomLineFormConfig.ts` — both `BomLineFormConfig` and
+ * `BomLineVariantFormConfig` consume it from this neutral module to
+ * avoid sibling-coupling between the two form configs.
+ */
+export function normalizeVariantCondition(raw: unknown): Record<string, string[] | { not: string[] }> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const entries = parseDisplayEntries(raw as Record<string, string[] | { not: string[] }>)
+  if (entries.length === 0) return null
+  const out: Record<string, string[] | { not: string[] }> = {}
+  for (const entry of entries) {
+    out[entry.key] = entry.operator === 'not_in' ? { not: entry.values } : entry.values
+  }
+  return out
+}
