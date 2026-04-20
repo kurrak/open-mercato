@@ -24,6 +24,7 @@ import { invalidateOperationsForRouting, type OperationRow } from '../hooks/useO
 import { RoutingTemplateSelector } from './RoutingTemplateSelector'
 import { OperationsTable } from './OperationsTable'
 import { OperationDialog } from './OperationDialog'
+import { DependenciesSection } from './DependenciesSection'
 import {
   ROUTING_TEMPLATE_DEFAULT_VALUES,
   buildRoutingTemplateFormFields,
@@ -200,12 +201,15 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
         ) : null}
 
         {selectedId ? (
-          <OperationsTable
-            routingTemplateId={selectedId}
-            masterProductId={productId}
-            onAddOperation={() => setOperationDialogState({ mode: 'add' })}
-            onEditOperation={(row) => setOperationDialogState({ mode: 'edit', operation: row })}
-          />
+          <>
+            <OperationsTable
+              routingTemplateId={selectedId}
+              masterProductId={productId}
+              onAddOperation={() => setOperationDialogState({ mode: 'add' })}
+              onEditOperation={(row) => setOperationDialogState({ mode: 'edit', operation: row })}
+            />
+            <DependenciesSection routingTemplateId={selectedId} />
+          </>
         ) : null}
 
         <RoutingTemplateCreateDialog

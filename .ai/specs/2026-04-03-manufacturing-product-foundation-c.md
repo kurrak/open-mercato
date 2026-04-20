@@ -617,8 +617,15 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 - **Scenario**: Two users simultaneously add dependencies that together create a cycle (A→B and B→A). Each passes validation individually
 - **Severity**: Low
 - **Affected area**: Data integrity of operation dependency graph
-- **Mitigation**: DAG validation runs on every dependency save (not just on explicit validation endpoint). Transaction isolation ensures the second save sees the first's committed dependency. If race condition occurs, the graph is invalid but will be caught on next validation or time-rollup request
-- **Residual risk**: Brief window of invalid graph. Acceptable — no downstream consumer yet (scheduling module not implemented)
+- **Mitigation**: The shared pure `validateDag` is exposed via `/api/manufacturing/routing/validate-graph` and run by the UI before dependency writes (see §Dependency list §CRUD). Any invalid graph is detected on the next dependency save or time-rollup request and surfaced as a warning. See also *Client-only DAG Enforcement* below for the server-side gap this mitigation currently depends on
+- **Residual risk**: Brief window of invalid graph during concurrent writes. Acceptable — no downstream consumer yet (scheduling module not implemented)
+
+#### Client-only DAG Enforcement
+- **Scenario**: `routing.operation_dependency.create` command validates same-routing but does NOT run `validateDag` before insert. The UI pre-checks via the shared pure validator, so the authoring path is protected; a caller hitting the POST endpoint directly (scripted client, partner integration, test harness that skips the UI dialog) can insert an edge that forms a cycle
+- **Severity**: Medium
+- **Affected area**: Data integrity of operation dependency graph
+- **Mitigation**: Add a `validateDag` call inside the `routing.operation_dependency.create` command (and the update command, which doesn't change predecessor/successor today but could) before `em.persist`. Reject with `CrudHttpError(400)` and the cycle path if invalid. Tracked as a server-hardening follow-up — the UI pre-check in `OperationDependencyDialog` already blocks the authoring path, so a separate small PR can close the loop without blocking Phase C. The `/validate-graph` endpoint already runs the same logic and can be used as the source of truth in the command handler
+- **Residual risk**: Until landed, cycles can be introduced by bypassing the UI. No data corruption (the graph stays tenant-scoped and soft-delete recoverable) but downstream consumers (time rollup, future scheduler) must remain tolerant of invalid graphs rather than assuming server-side enforcement
 
 #### WorkCenter Deletion With Referenced Operations
 - **Scenario**: User deletes a WorkCenter that has OperationTemplates referencing it
@@ -682,6 +689,9 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 ---
 
 ## Changelog
+
+### 2026-04-20
+- **Risks**: Added *Client-only DAG Enforcement* entry documenting that `routing.operation_dependency.create` validates same-routing only, not cycle-freeness. The UI pre-checks via `validateDag` (see `OperationDependencyDialog`) so the authoring path is protected; direct POST callers bypass that. Tracked as a server-hardening follow-up. Also tightened the mitigation copy on the neighbouring *DAG Validation on Concurrent Edits* risk — removed the incorrect claim that "DAG validation runs on every dependency save" and redirected to the new risk.
 
 ### 2026-04-17
 - **Removed `Market Reference` blockquote** from §Proposed Solution (DAG / time components / payment types / WorkCenter attributions against 13 reference systems). The comparative-research framing is not consistent with the rest of OM's spec style. Where a pattern attribution is genuinely load-bearing for a design decision, it can live in the Rationale column of the Design Decisions table; nothing in this spec required that.

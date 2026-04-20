@@ -14,6 +14,15 @@ export type DagValidationResult = {
   valid: boolean
   errors: string[]
   topology: string[]
+  /**
+   * Structured cycle data when a cycle is detected: the ordered list of
+   * operation ids involved in the cycle. `null` when the graph is
+   * acyclic OR when the failure is not cycle-related (e.g. self-
+   * reference, unknown operation). Consumers that want to render a
+   * friendly cycle path (e.g. rewrite ids → names) should read this
+   * field instead of string-matching the `errors` text.
+   */
+  cycle: string[] | null
 }
 
 /**
@@ -37,7 +46,7 @@ export function validateDag(
   }
 
   if (errors.length > 0) {
-    return { valid: false, errors, topology: [] }
+    return { valid: false, errors, topology: [], cycle: null }
   }
 
   // Build adjacency list and in-degree map
@@ -63,7 +72,7 @@ export function validateDag(
   }
 
   if (errors.length > 0) {
-    return { valid: false, errors, topology: [] }
+    return { valid: false, errors, topology: [], cycle: null }
   }
 
   // Kahn's algorithm for topological sort
@@ -88,8 +97,8 @@ export function validateDag(
   if (topology.length !== operationIds.length) {
     const inCycle = operationIds.filter((id) => !topology.includes(id))
     errors.push(`Cycle detected involving operations: ${inCycle.join(', ')}`)
-    return { valid: false, errors, topology: [] }
+    return { valid: false, errors, topology: [], cycle: inCycle }
   }
 
-  return { valid: true, errors: [], topology }
+  return { valid: true, errors: [], topology, cycle: null }
 }
