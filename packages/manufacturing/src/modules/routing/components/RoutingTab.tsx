@@ -25,6 +25,7 @@ import { RoutingTemplateSelector } from './RoutingTemplateSelector'
 import { OperationsTable } from './OperationsTable'
 import { OperationDialog } from './OperationDialog'
 import { DependenciesSection } from './DependenciesSection'
+import { FlowVisualization } from './FlowVisualization'
 import {
   ROUTING_TEMPLATE_DEFAULT_VALUES,
   buildRoutingTemplateFormFields,
@@ -209,6 +210,7 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
               onEditOperation={(row) => setOperationDialogState({ mode: 'edit', operation: row })}
             />
             <DependenciesSection routingTemplateId={selectedId} />
+            <FlowVisualization routingTemplateId={selectedId} />
           </>
         ) : null}
 
