@@ -202,6 +202,7 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
         {selectedId ? (
           <OperationsTable
             routingTemplateId={selectedId}
+            masterProductId={productId}
             onAddOperation={() => setOperationDialogState({ mode: 'add' })}
             onEditOperation={(row) => setOperationDialogState({ mode: 'edit', operation: row })}
           />

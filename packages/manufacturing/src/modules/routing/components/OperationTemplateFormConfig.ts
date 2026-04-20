@@ -58,9 +58,21 @@ export function operationRowToFormValues(row: OperationRow): OperationFormValues
   }
 }
 
-function emptyToNull(value: string): string | null {
-  const trimmed = value.trim()
-  return trimmed.length === 0 ? null : trimmed
+// Accept both strings (text inputs) and numbers (type: 'number' inputs in
+// CrudForm round-trip as numbers, not strings). Empty string / null /
+// undefined collapse to null; everything else gets stringified so the
+// server-side numericString schema can parse it.
+function emptyToNull(value: unknown): string | null {
+  if (value == null) return null
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null
+    return String(value)
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length === 0 ? null : trimmed
+  }
+  return null
 }
 
 // Payment-type-driven rate handling:
