@@ -42,8 +42,12 @@ export default function WorkCenterEditPage({ params }: { params?: { id?: string 
       setLoading(true)
       setNotFound(false)
       try {
+        // The list route filters by `ids` (comma-separated), not `id`.
+        // Passing `id=...` was silently ignored and returned the first
+        // unfiltered row for every edit page. Using `ids=<singleUuid>` so
+        // the server actually filters to the requested work center.
         const listData = await readApiResultOrThrow<{ items?: WorkCenterRecord[] }>(
-          `/api/routing/work-center?id=${encodeURIComponent(workCenterId)}&page=1&pageSize=1`,
+          `/api/routing/work-center?ids=${encodeURIComponent(workCenterId)}&page=1&pageSize=1`,
           undefined,
           { errorMessage: t('manufacturing.common.error', 'An error occurred') },
         )

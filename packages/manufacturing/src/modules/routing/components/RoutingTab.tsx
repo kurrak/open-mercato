@@ -17,9 +17,13 @@ import { flash } from '@open-mercato/ui/backend/FlashMessages'
 import { createCrud, deleteCrud } from '@open-mercato/ui/backend/utils/crud'
 import { useConfirmDialog } from '@open-mercato/ui/backend/confirm-dialog'
 import { useGuardedMutation } from '@open-mercato/ui/backend/injection/useGuardedMutation'
+import { useQueryClient } from '@tanstack/react-query'
 import { useT } from '@open-mercato/shared/lib/i18n/context'
 import { useRoutingTemplatesForProduct } from '../hooks/useRoutingTemplatesForProduct'
+import { invalidateOperationsForRouting, type OperationRow } from '../hooks/useOperationsForRouting'
 import { RoutingTemplateSelector } from './RoutingTemplateSelector'
+import { OperationsTable } from './OperationsTable'
+import { OperationDialog } from './OperationDialog'
 import {
   ROUTING_TEMPLATE_DEFAULT_VALUES,
   buildRoutingTemplateFormFields,
@@ -47,6 +51,7 @@ export type RoutingTabProps = {
 
 export default function RoutingTab({ productId, extension: _extension }: RoutingTabProps) {
   const t = useT()
+  const queryClient = useQueryClient()
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
   const { runMutation, retryLastMutation } = useGuardedMutation<Record<string, unknown>>({
     contextId: 'routing-tab',
@@ -54,6 +59,11 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
+  const [operationDialogState, setOperationDialogState] = React.useState<
+    | { mode: 'add' }
+    | { mode: 'edit'; operation: OperationRow }
+    | null
+  >(null)
 
   const {
     options: templates,
@@ -190,12 +200,11 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
         ) : null}
 
         {selectedId ? (
-          <div className="rounded border border-dashed p-4 text-sm text-muted-foreground">
-            {t(
-              'routing.tab.operationsPlaceholder',
-              'Operations, variant overrides, dependencies, and the time rollup panel will render here.',
-            )}
-          </div>
+          <OperationsTable
+            routingTemplateId={selectedId}
+            onAddOperation={() => setOperationDialogState({ mode: 'add' })}
+            onEditOperation={(row) => setOperationDialogState({ mode: 'edit', operation: row })}
+          />
         ) : null}
 
         <RoutingTemplateCreateDialog
@@ -203,6 +212,19 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
           onOpenChange={setCreateDialogOpen}
           onSubmit={handleCreateRoutingTemplate}
         />
+
+        {selectedId && operationDialogState ? (
+          <OperationDialog
+            open
+            onOpenChange={(next) => { if (!next) setOperationDialogState(null) }}
+            routingTemplateId={selectedId}
+            editingOperation={operationDialogState.mode === 'edit' ? operationDialogState.operation : null}
+            onSuccess={() => {
+              setOperationDialogState(null)
+              if (selectedId) invalidateOperationsForRouting(queryClient, selectedId)
+            }}
+          />
+        ) : null}
 
         {ConfirmDialogElement}
       </div>
