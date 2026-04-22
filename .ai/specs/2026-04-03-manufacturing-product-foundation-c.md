@@ -473,47 +473,51 @@ If the product has multiple RoutingTemplates (via multiple PMs), show a dropdown
 
 | Column | Display |
 |---|---|
-| Sequence | Number (from `sort_order`) |
+| Sequence | Number (from `sequence`) |
 | Name | Operation name (translatable) |
-| Work center | `WorkCenter.name` + code badge, or "No work center" placeholder with warning icon |
-| Setup time | Minutes or "—" |
-| Run time | Minutes or "—" |
-| Teardown time | Minutes or "—" |
-| Payment type | Badge: `hourly` / `piecework` / `mixed` |
-| Rate | Amount with currency or "—" |
+| Work center | `NameWithCode` (name + code badge), or "No work center" placeholder with warning icon |
+| Setup time (min) | Minutes or "—" |
+| Run time (min) | Minutes or "—" |
+| Teardown time (min) | Minutes or "—" |
+| Wait time (min) | Minutes or "—" |
+| Move time (min) | Minutes or "—" |
+| Payment type | `EnumBadge` with values `hourly` / `piecework` / `base_plus_piecework` |
+| Rate | Rate matching `payment_type` (`/h` or `/pc`); stacked for `base_plus_piecework` |
+| Overrides | Count pill (`[N]` or "None") + chevron that toggles the inline variant-overrides detail row for that operation |
 | Subcontracted | Flag icon if true |
 
-**Row actions** (stable ids): `edit`, `delete`, `reorder-up`, `reorder-down`
+**Row actions** (inline IconButtons, no menu): `reorder-up`, `reorder-down`, `edit`, `delete`
 **Header action**: "Add Operation"
 
-Reorder uses `sort_order` increment/decrement via API — same pattern as BOM lines (no drag-and-drop).
+Reorder swaps `sequence` values between the row and its neighbour (±10 fallback when the pair is tied). Table is raw `<table>` markup rather than `DataTable`, matching the BOM tree view's rationale: the shared DataTable has no native expanded-row story and the variant-overrides section below requires an inline per-row detail row (see §5).
 
 #### 4. Operation CRUD dialogs
 
 **Add / Edit Operation** → `CrudForm` dialog with:
 
 - Name (translatable text)
-- Work center: searchable combobox of WorkCenter (master data from foundation Phase 2) with "Create new" shortcut → inline dialog that creates the work center without leaving the page
+- Work center: searchable combobox of WorkCenter (master data from foundation Phase 2) with "Create new" shortcut → inline quick-create dialog that creates the work center without leaving the outer dialog. The inline dialog applies a `stopPropagation` boundary on its `onSubmit`/`onKeyDown` so its submit (button click + `Cmd/Ctrl+Enter`) doesn't bubble through the React virtual tree across the Radix portal into the outer form
 - Setup / run / teardown / wait / move time (all numeric, nullable per Graceful Incompleteness — null times display as "—" and are treated as 0 in calculations)
-- Payment type (select: `hourly` / `piecework` / `mixed`)
-- Hourly rate (number, shown when payment_type ∈ {hourly, mixed})
-- Piece rate (number, shown when payment_type ∈ {piecework, mixed})
+- Payment type (select: `hourly` / `piecework` / `base_plus_piecework`)
+- Hourly rate (number, reactive custom field — renders when `payment_type ∈ {hourly, base_plus_piecework}`, otherwise a muted "Not applicable for this payment type" placeholder)
+- Piece rate (number, same reactive pattern for `payment_type ∈ {piecework, base_plus_piecework}`)
 - Subcontracted (toggle)
-- Factory zone (combobox of FactoryZone, optional)
-- `sort_order` (auto-assigned, editable)
+- Notes (textarea)
 
-Save always succeeds — null work center or null times produce warning icons on the row, not save errors.
+`sequence` is not a dialog input — the create command auto-assigns `max(sequence) + 10` server-side and the reorder row actions swap `sequence` values between neighbours. Save always succeeds — null work center or null times produce warning icons on the row, not save errors.
 
 #### 5. OperationTemplateVariant inline section
 
-Expand arrow on any operation row reveals nested variant override rows. Each override shows:
+Each operations-table row carries an **Overrides** column with a count pill (`[N]` or "None") and a chevron button. Clicking the chevron inserts an inline detail row below the operation (colSpan across all columns) that hosts the full overrides list. Mirrors the BOM tree's `BomLineVariantsSection` UX (spec b §5) — same pattern, same count-pill + chevron affordance.
 
-- Variant identifier (CatalogProductVariant name or raw `variant_condition` keys)
-- Time overrides (setup / run / teardown — any subset)
-- Rate overrides (hourly / piece — any subset)
-- Work center override (or "—")
+Each override shows:
 
-**Inline actions**: add override (dialog), edit (dialog), delete (confirm). Dialog enforces the XOR constraint — exactly one of `catalog_product_variant_id` or `variant_condition` must be set. `variant_condition` keys validated against `useConfigAttributeKeys(productId)` from sub-spec d — unknown keys produce a warning badge (non-blocking).
+- Trigger — a variant badge when `variant_id` is set, otherwise `VariantConditionBadges` (shared from spec b) rendering the `variant_condition` keys as pills
+- Time overrides (setup / run / teardown as a `setup / run / teardown` triple; null fields display as "—" per BOM convention — inheritance is silent)
+- Rate overrides (hourly / piece pair; null fields display as "—")
+- Work center override (`NameWithCode`, or "—")
+
+**Inline actions**: add override (dialog), edit (dialog), delete (confirm). The override dialog enforces the activation XOR — exactly one of `variant_id` OR `variant_condition` must be set — via a segmented "Product variant" / "Configuration condition" toggle that swaps the active input. `variant_condition` keys are validated against `useConfigAttributeKeys(productId)` from sub-spec d — unknown keys produce a warning badge (non-blocking).
 
 #### 6. Dependency section
 
@@ -521,23 +525,32 @@ Two views side by side: a read-only flow visualization and a CRUD list for editi
 
 ##### Flow visualization (read-only)
 
-Uses the topological sort from `lib/dependency-graph.ts` to render operations grouped by execution level (operations with no unresolved predecessors = level 0, their successors = level 1, etc.). Parallel operations at the same level shown side by side. Connector lines/arrows show convergence points.
+Horizontal timeline: CSS Grid with one column per execution level (left = earliest, right = latest), parallel operations stacked vertically within each column. Level assignment shares the Kahn BFS primitive in `lib/dependency-graph.ts` with `validateDag` via the internal `buildGraph(operationIds, edges)` helper — the render and the validator stay in lockstep on cycle semantics.
 
-Example render:
+Layout:
 
 ```
-┌─ Foam lamination (WC-FOAM, 45 min)
-├─ Cover sewing (WC-SEW, 60 min)
-├─ Frame assembly (WC-FRAME, 30 min)
-├─ Side panel gluing (WC-SIDE, 25 min)
-└─→ Upholstery (WC-UPHO, 90 min)
-     └─→ Quality check (WC-QC, 15 min)
-          └─→ Packaging (WC-PACK, 45 min)
+┌─────────────┐        ┌──────────────┐    ┌─────────────┐    ┌────────────┐
+│ Foam lam.   │───┐    │              │    │              │    │            │
+│ WC-FOAM/45m │   │    │              │    │              │    │            │
+└─────────────┘   │    │              │    │              │    │            │
+┌─────────────┐   │    │              │    │              │    │            │
+│ Cover sewing│───┼──▶ │ Upholstery   │──▶ │ Quality check│──▶ │ Packaging  │
+│ WC-SEW/60m  │   │    │ WC-UPHO/90m  │    │ WC-QC/15m    │    │ WC-PACK/45m│
+└─────────────┘   │    │              │    │              │    │            │
+┌─────────────┐   │    │              │    │              │    │            │
+│ Frame asm.  │───┤    │              │    │              │    │            │
+│ WC-FRAME/30m│   │    │              │    │              │    │            │
+└─────────────┘   │    │              │    │              │    │            │
+┌─────────────┐   │    │              │    │              │    │            │
+│ Side panel  │───┘    │              │    │              │    │            │
+│ WC-SIDE/25m │        │              │    │              │    │            │
+└─────────────┘        └──────────────┘    └──────────────┘    └────────────┘
 ```
 
-Rendered with plain HTML/CSS (indented divs with connector lines). Each node shows: operation name, work center code, run time. Parallel paths visually grouped at the same indentation level. Convergence points marked with arrow connectors from all predecessors. Operations without dependencies shown at level 0 with a note "No dependencies — follows sequence order."
+Each card shows: operation name, work center (`NameWithCode`), run time. An absolute-positioned SVG overlay draws a bezier connector per active dependency from the predecessor card's right edge to the successor card's left edge — `required` strength draws solid, `optional` dashed. Card positions are measured through refs + a ResizeObserver so connectors redraw on layout shifts (font loads, responsive resize). Operations without dependencies render at level 0 with a top-level `Notice`: "No dependencies — operations will run in sequence order." Cycle-stuck operations (unreachable from any level-0 node) are surfaced below the grid in a separate amber-bordered warning group, each wearing a `data-testid="routing-flow-card-{id}"`.
 
-**No graph library in this phase.** Future: replace with an interactive editor (React Flow or equivalent) where users can drag to create/remove dependencies visually.
+**No graph library in this phase.** SVG is part of the web platform, not a graph library — used for the bezier connectors only, not for layout or interaction. Future: replace with an interactive editor (React Flow or equivalent) where users can drag to create/remove dependencies visually.
 
 ##### Dependency list (CRUD)
 
@@ -550,36 +563,39 @@ Dependencies:
 • Frame assembly → Upholstery (finish-to-start, required)
 ```
 
-- **Add dependency**: dialog with predecessor + successor operation selects (both scoped to the current routing) + dependency type (`finish_to_start` / `start_to_start` / `finish_to_finish` / `start_to_finish`) + strength (`required` / `preferred`)
+- **Add dependency**: dialog with predecessor + successor operation selects (both scoped to the current routing) + dependency type (`finish_to_start` / `start_to_start` / `finish_to_finish`) + strength (`required` / `optional`)
 - **Delete dependency** (confirm dialog)
-- **Cycle detection**: if adding a dependency would create a cycle, the dialog blocks save and displays the cycle path (e.g., "Circular reference: A → B → A"). Server-side validation also runs via the existing `lib/dependency-graph.ts` on every dependency write
-- **`preferred` strength behavior**: both `required` and `preferred` dependencies render identically in the flow visualization (same arrows) and are treated identically in time rollup (both count for critical path). The distinction is metadata for future scheduling — `preferred` indicates a soft constraint that a scheduler may relax under capacity pressure. For the current UI phase, the only visual difference is a "(preferred)" label on the dependency row in the CRUD list. No scheduling engine exists yet to exploit the distinction
+- **Cycle detection**: if adding a dependency would create a cycle, the dialog blocks save and displays the cycle path (e.g., "Adding this dependency would create a cycle: A → B → C"). Rendering consumes the structured `cycle: string[]` field on `DagValidationResult` (ordered operation ids in the stuck set) and rewrites ids to names — not string-matched from the `errors` text. See the `§Risks` note *Client-only DAG Enforcement* for the server-side hardening follow-up
+- **`optional` strength behavior**: both `required` and `optional` dependencies render in the flow visualization (required as solid arrows, optional as dashed) and are treated identically in time rollup (both count for critical path). The distinction is metadata for future scheduling — `optional` indicates a soft constraint that a scheduler may relax under capacity pressure. No scheduling engine exists yet to exploit the distinction
 
 #### 7. Time rollup panel
 
-Collapsible section at the bottom of the tab:
+Dialog-hosted panel (mirrors BOM's Explode BOM dialog pattern). Opened from a "Calculate time" button in the routing-tab header next to "Add routing" / "Delete routing" — only shown when a routing is selected. Each dialog open bumps a key so the panel remounts fresh with no stale result / picked variant / ConfigurationForm draft from a previous calculation.
 
-- "Calculate Time" button
+Panel inputs:
+
 - Quantity input (default: 1)
 - **Configuration input switching** — same pattern as BOM explosion panel (sub-spec b §6):
 
 | `configuration_type` | Input Component | Output passed to time rollup |
 |---|---|---|
 | `none` | Nothing — just button + quantity | `{}` — base times used for all operations |
-| `variant_based` | `VariantPicker` (from `product_master/components/VariantPicker.tsx`, shared with sub-spec b) | `{ catalogProductVariantId }` — matches OperationTemplateVariant.catalog_product_variant_id for time overrides |
-| `rule_based` | `ConfigurationForm` (from sub-spec d §3) | `{ variantConditions }` — matches OperationTemplateVariant.variant_condition for time overrides |
+| `variant_based` | `VariantPicker` (from `product_master/components/VariantPicker.tsx`, shared with sub-spec b) | `{ variantId }` — matches `OperationTemplateVariant.variant_id` for time overrides |
+| `rule_based` | `ConfigurationForm` (from sub-spec d §3). Zero-attributes edge case: render a bare Calculate button + hint note so rollup runs against base operation times (same fallback BOM's explosion panel uses). Non-empty case: the `ConfigurationForm` submit button is the Calculate trigger. Flow posts the snapshot through `/api/configurator/manufacturing/configurator/resolve` first to apply ConfigAttribute rules, then forwards the resolved conditions to `/time-rollup` — matches BOM explosion exactly | `{ variantConditions }` — matches `OperationTemplateVariant.variant_condition` for time overrides |
+
+The compute POST is wrapped in `useGuardedMutation` for record-lock / injection parity with the rest of the manufacturing module (platform convention per `packages/ui/AGENTS.md`).
 
 - **Result display**:
   - Total occupation time (sum of all operations)
   - Total lead time (critical path through the DAG)
-  - Per-operation breakdown (table: operation, duration, start level, end level)
+  - Per-operation breakdown (table: operation, occupation, lead time)
   - **Warnings panel** (collapsible): operations with null run_time, operations without work centers, disconnected operations, etc.
 
 #### 8. Readiness checklist integration
 
 Expose `useIsRoutingReady(productId): boolean` — returns `true` when at least one RoutingTemplate with at least one non-soft-deleted OperationTemplate exists for the product. Foundation overview tab calls this to flip routing ○ → ✓.
 
-Also expose `useRoutingName(productId): { name: string | null; ready: boolean }` for the production method cards on the overview tab to display linked routing names.
+Also expose `useRoutingTemplateNamesByIds(ids: readonly string[]): ReadonlyMap<string, string>` — batch-resolves RoutingTemplate UUIDs to names. The Overview tab's production-method cards call it with the set of `routingTemplateId`s their PMs reference so each card shows the name of its linked routing (matches the BOM tab's `useBomHeaderNamesByIds` pattern).
 
 #### 9. Unit tests
 
@@ -683,7 +699,8 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 |-------|--------|------|-------|
 | Phase A — Work Centers + Entities | Done | 2026-04-04 | 6 entities, 17 commands, 6 CRUD routes, migration |
 | Phase B — DAG Validation + Time Rollup | Done | 2026-04-04 | Pure DAG validation (Kahn's algo), time rollup with critical path, 2 custom endpoints |
-| Phase C — Widget + Tests | In Progress | 2026-04-04 | Algorithm + unit tests done (31 tests). RoutingTab placeholder landed in foundation spec Phase 3. Detailed RoutingTab UI + E2E cross-module test migrated into this spec (2026-04-11 refactor) — implementation not started |
+| Phase C — Widget | Done | 2026-04-22 | RoutingTab shell, readiness hooks, operations table (raw `<table>` with inline variant-overrides expansion matching BOM §5), Operation CRUD dialog with inline WorkCenter quick-create, dependency list + cycle-aware dialog, horizontal flow visualization (CSS Grid + SVG bezier connectors), time rollup dialog (three configuration modes + server-side `variantId` support). Shared primitives: `buildGraph` in `lib/dependency-graph.ts` used by both `validateDag` and `computeLevelGrouping`; `coerceSnapshotToStrings` in `lib/variant-condition.ts` shared with BOM explosion. Soft-delete resurrect workaround on three create commands pending a partial-UNIQUE migration. 39 unit tests (DAG validation, time rollup, validators, flow grouping). 202 i18n keys across 4 locales with full parity |
+| Phase C — Integration tests | Deferred | — | C-UI-1..9 + C-E2E-1 deferred per implementation plan until UI stakeholder sign-off. `data-testid` selectors (`routing-flow-card-{id}`, `routing-flow-connector`) landed preemptively on the flow viz so the C-UI-5 assertions plug in cleanly when the test suite ships |
 | Review fixes | Done | 2026-04-06 | Removed production_method_id from RoutingTemplate entity/validator/command/route. Added 9 missing CRUD events. Migration regenerated |
 
 ---
@@ -693,6 +710,13 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 ### 2026-04-22
 - **§6 Flow visualization — rendering delta**: the read-only flow renderer upgraded from the originally-approved "plain HTML/CSS, indented divs + CSS connectors" to a CSS Grid layout with an SVG bezier-connector overlay. Same scope (read-only, no graph library, no drag-to-edit), sharper convergence rendering — individual SVG paths from each predecessor card's right edge to each successor card's left edge replace the generic "one arrow per level" indentation. `<svg>` is part of the web platform, not a graph library, so the "no graph library" constraint in §6 is honored. Level-assignment algorithm (Kahn-BFS recording the longest-path level per op) is unchanged; cycle-stuck ops still surface in a separate amber warning. Connectors draw solid for `required` link strength and dashed for `optional`.
 - **§Data Models / DAG validation — shared primitive**: the flow-visualization level assignment lives in `lib/dependency-graph.ts` alongside `validateDag`, sharing a single `buildGraph(operationIds, edges)` helper. Cycle semantics stay consistent across the validator (used by `/validate-graph`) and the render surface.
+- **§3 Operations DataTable — wording sync to implementation**: dropped `sort_order` references in favor of `sequence` (entity field); added `Wait (min)` and `Move (min)` columns; `Payment type` values renamed `mixed` → `base_plus_piecework` (matches validator); `Rate` column documents the payment-type-conditional rendering rule (stacked for `base_plus_piecework`); `Overrides` column (count pill + chevron) documented; row-action order updated to `reorder-up`, `reorder-down`, `edit`, `delete` (inline IconButtons, no menu); clarified that the operations section renders as raw `<table>` markup (not `DataTable`) for the same reason as BOM's tree view — DataTable has no native expanded-row story, required by §5 inline variant overrides.
+- **§4 Operation CRUD dialog — wording sync**: payment-type enum updated to `hourly` / `piecework` / `base_plus_piecework`; rate inputs documented as reactive custom fields with a "Not applicable" placeholder when the payment type excludes them; removed `sort_order` and `Factory zone` from the dialog field list (`sequence` is server-assigned via `max(sequence) + 10`, factory zone is a WorkCenter property not an Operation input); added `Notes` textarea; documented the `stopPropagation` boundary on the inline WorkCenter quick-create dialog so its submit doesn't bubble into the outer form across the Radix portal.
+- **§5 OperationTemplateVariant inline section — UX delta**: the expand mechanism is a count-pill + chevron on an Overrides column of the operations table, not a tree-style expand arrow. Clicking the chevron inserts a colSpan detail row below the operation with the overrides list. Mirrors BOM's `BomLineVariantsSection` UX. Trigger rendering uses `VariantConditionBadges` shared from BOM for the condition case; null override fields display as "—" per BOM inheritance convention.
+- **§6 Dependency section — enum sync**: dropped `start_to_finish` from the dependency-type enum (entity has 3 values only). Dropped `preferred` strength wording in favor of `optional` (entity uses `optional`). Client-side cycle pre-check now consumes the structured `cycle: string[]` field on `DagValidationResult` — not the `"Cycle detected"` error-text prefix. Optional-strength edges render dashed in the flow visualization, not a `"(preferred)"` label in the list.
+- **§7 Time rollup panel — UX delta**: panel is dialog-hosted (opened from a "Calculate time" button in the routing-tab header), not a collapsible section at the bottom. Variant-based mode sends `{ variantId }` to match `OperationTemplateVariant.variant_id` (the endpoint was extended to support this). Rule-based mode first posts the snapshot to `/configurator/resolve` to apply ConfigAttribute rules before forwarding the resolved conditions to `/time-rollup` — same two-step flow BOM's explosion panel uses. Zero-attributes edge case on rule_based: bare Calculate button + hint note (matches BOM).
+- **§8 Readiness hook — signature sync**: `useRoutingName` renamed to `useRoutingTemplateNamesByIds(ids)` returning `ReadonlyMap<string, string>` — the Overview tab needs per-PM name resolution and the batch-by-ids shape matches the existing `useBomHeaderNamesByIds` pattern.
+- **Implementation Status**: Phase C — Widget flipped to Done. Phase C — Integration tests (C-UI-1..9 + C-E2E-1) broken out as a separate deferred row per the original implementation plan; `data-testid` selectors on flow cards and connectors landed preemptively to unblock C-UI-5 when tests ship.
 
 ### 2026-04-20
 - **Risks**: Added *Client-only DAG Enforcement* entry documenting that `routing.operation_dependency.create` validates same-routing only, not cycle-freeness. The UI pre-checks via `validateDag` (see `OperationDependencyDialog`) so the authoring path is protected; direct POST callers bypass that. Tracked as a server-hardening follow-up. Also tightened the mitigation copy on the neighbouring *DAG Validation on Concurrent Edits* risk — removed the incorrect claim that "DAG validation runs on every dependency save" and redirected to the new risk.
