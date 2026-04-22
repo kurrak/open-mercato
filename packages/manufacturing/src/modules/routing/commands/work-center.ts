@@ -83,22 +83,54 @@ const createWorkCenterCommand: CommandHandler<WorkCenterCreateInput, { workCente
       }
     }
 
-    const record = em.create(WorkCenter, {
+    // The DB UNIQUE(organization_id, tenant_id, code) counts soft-
+    // deleted rows. Inserting after a soft-delete on the same code
+    // would hit a PG UNIQUE violation and surface as a 500 to the
+    // user. Resurrect the soft-deleted row instead: clear deletedAt
+    // and overwrite fields with the new values. An active collision
+    // throws 409. Long-term fix is a partial UNIQUE index
+    // (WHERE deleted_at IS NULL).
+    const existing = await em.findOne(WorkCenter, {
       organizationId: parsed.organizationId,
       tenantId: parsed.tenantId,
-      name: parsed.name,
       code: parsed.code,
-      factoryZone: factoryZoneRef,
-      capacity: parsed.capacity ?? 1,
-      efficiencyPercent: parsed.efficiencyPercent ?? 100,
-      schedulingMode: parsed.schedulingMode ?? 'infinite',
-      shiftCalendarId: parsed.shiftCalendarId ?? null,
-      defaultHourlyRate: parsed.defaultHourlyRate ?? null,
-      overheadRatePerHour: parsed.overheadRatePerHour ?? null,
-      isActive: parsed.isActive ?? true,
-      notes: parsed.notes ?? null,
     })
-    em.persist(record)
+
+    let record: WorkCenter
+    if (existing && existing.deletedAt != null) {
+      existing.deletedAt = null
+      existing.name = parsed.name
+      existing.factoryZone = factoryZoneRef
+      existing.capacity = parsed.capacity ?? 1
+      existing.efficiencyPercent = parsed.efficiencyPercent ?? 100
+      existing.schedulingMode = parsed.schedulingMode ?? 'infinite'
+      existing.shiftCalendarId = parsed.shiftCalendarId ?? null
+      existing.defaultHourlyRate = parsed.defaultHourlyRate ?? null
+      existing.overheadRatePerHour = parsed.overheadRatePerHour ?? null
+      existing.isActive = parsed.isActive ?? true
+      existing.notes = parsed.notes ?? null
+      existing.updatedAt = new Date()
+      record = existing
+    } else if (existing) {
+      throw new CrudHttpError(409, { error: 'Work center with this code already exists.' })
+    } else {
+      record = em.create(WorkCenter, {
+        organizationId: parsed.organizationId,
+        tenantId: parsed.tenantId,
+        name: parsed.name,
+        code: parsed.code,
+        factoryZone: factoryZoneRef,
+        capacity: parsed.capacity ?? 1,
+        efficiencyPercent: parsed.efficiencyPercent ?? 100,
+        schedulingMode: parsed.schedulingMode ?? 'infinite',
+        shiftCalendarId: parsed.shiftCalendarId ?? null,
+        defaultHourlyRate: parsed.defaultHourlyRate ?? null,
+        overheadRatePerHour: parsed.overheadRatePerHour ?? null,
+        isActive: parsed.isActive ?? true,
+        notes: parsed.notes ?? null,
+      })
+      em.persist(record)
+    }
     await em.flush()
 
     const de = ctx.container.resolve('dataEngine') as DataEngine

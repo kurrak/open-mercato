@@ -65,17 +65,55 @@ const createOperationDependencyCommand: CommandHandler<OperationDependencyCreate
     const predecessorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.predecessorOperationId, organizationId: parsed.organizationId, tenantId: parsed.tenantId })
     const successorOperation = await em.findOneOrFail(OperationTemplate, { id: parsed.successorOperationId, organizationId: parsed.organizationId, tenantId: parsed.tenantId })
 
-    const record = em.create(OperationDependency, {
-      organizationId: parsed.organizationId,
-      tenantId: parsed.tenantId,
-      predecessorOperation,
-      successorOperation,
-      dependencyType: parsed.dependencyType ?? 'finish_to_start',
-      linkStrength: parsed.linkStrength ?? 'required',
-      overlapQuantity: parsed.overlapQuantity ?? null,
-      overlapTimeMinutes: parsed.overlapTimeMinutes ?? null,
-    })
-    em.persist(record)
+    // The DB UNIQUE(organization_id, predecessor_operation_id,
+    // successor_operation_id) counts soft-deleted rows. A naive insert
+    // after a soft-delete on the same pair hits a UNIQUE violation and
+    // surfaces as a 500 to the user. Resurrect the soft-deleted row
+    // instead: clear deletedAt and apply the new field values. The
+    // restored row keeps its original id, which is fine — the client
+    // pre-check (duplicate + cycle) is scoped to active rows, and the
+    // undo path soft-deletes again regardless of how we got here.
+    //
+    // A proper fix is a partial UNIQUE index (WHERE deleted_at IS NULL)
+    // at the DB level; until that migration lands, the resurrection
+    // path owns the same-pair re-add UX.
+    const existing = await em.findOne(
+      OperationDependency,
+      {
+        organizationId: parsed.organizationId,
+        tenantId: parsed.tenantId,
+        predecessorOperation: parsed.predecessorOperationId,
+        successorOperation: parsed.successorOperationId,
+      },
+    )
+
+    let record: OperationDependency
+    if (existing && existing.deletedAt != null) {
+      existing.deletedAt = null
+      existing.dependencyType = parsed.dependencyType ?? existing.dependencyType ?? 'finish_to_start'
+      existing.linkStrength = parsed.linkStrength ?? existing.linkStrength ?? 'required'
+      existing.overlapQuantity = parsed.overlapQuantity ?? null
+      existing.overlapTimeMinutes = parsed.overlapTimeMinutes ?? null
+      existing.updatedAt = new Date()
+      record = existing
+    } else if (existing) {
+      // An *active* row already exists — should have been caught by the
+      // client duplicate pre-check, but guard server-side too with a
+      // friendly 400 instead of a PG UNIQUE violation.
+      throw new CrudHttpError(409, { error: 'Dependency already exists for this predecessor/successor pair.' })
+    } else {
+      record = em.create(OperationDependency, {
+        organizationId: parsed.organizationId,
+        tenantId: parsed.tenantId,
+        predecessorOperation,
+        successorOperation,
+        dependencyType: parsed.dependencyType ?? 'finish_to_start',
+        linkStrength: parsed.linkStrength ?? 'required',
+        overlapQuantity: parsed.overlapQuantity ?? null,
+        overlapTimeMinutes: parsed.overlapTimeMinutes ?? null,
+      })
+      em.persist(record)
+    }
     await em.flush()
 
     const de = ctx.container.resolve('dataEngine') as DataEngine

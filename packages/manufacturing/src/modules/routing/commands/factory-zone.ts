@@ -44,16 +44,42 @@ const createFactoryZoneCommand: CommandHandler<FactoryZoneCreateInput, { factory
     const parsed = factoryZoneCreateSchema.parse(input)
     const em = (ctx.container.resolve('em') as EntityManager).fork()
 
-    const record = em.create(FactoryZone, {
+    // The DB UNIQUE(organization_id, tenant_id, code) counts soft-
+    // deleted rows. Inserting after a soft-delete on the same code
+    // would hit a PG UNIQUE violation and surface as a 500 to the
+    // user. Resurrect the soft-deleted row instead: clear deletedAt
+    // and overwrite fields with the new values. An active collision
+    // throws 409. Long-term fix is a partial UNIQUE index
+    // (WHERE deleted_at IS NULL).
+    const existing = await em.findOne(FactoryZone, {
       organizationId: parsed.organizationId,
       tenantId: parsed.tenantId,
-      name: parsed.name,
       code: parsed.code,
-      locationId: parsed.locationId ?? null,
-      isActive: parsed.isActive ?? true,
-      notes: parsed.notes ?? null,
     })
-    em.persist(record)
+
+    let record: FactoryZone
+    if (existing && existing.deletedAt != null) {
+      existing.deletedAt = null
+      existing.name = parsed.name
+      existing.locationId = parsed.locationId ?? null
+      existing.isActive = parsed.isActive ?? true
+      existing.notes = parsed.notes ?? null
+      existing.updatedAt = new Date()
+      record = existing
+    } else if (existing) {
+      throw new CrudHttpError(409, { error: 'Factory zone with this code already exists.' })
+    } else {
+      record = em.create(FactoryZone, {
+        organizationId: parsed.organizationId,
+        tenantId: parsed.tenantId,
+        name: parsed.name,
+        code: parsed.code,
+        locationId: parsed.locationId ?? null,
+        isActive: parsed.isActive ?? true,
+        notes: parsed.notes ?? null,
+      })
+      em.persist(record)
+    }
     await em.flush()
 
     return { factoryZoneId: record.id }
