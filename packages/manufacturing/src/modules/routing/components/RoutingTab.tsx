@@ -26,6 +26,8 @@ import { OperationsTable } from './OperationsTable'
 import { OperationDialog } from './OperationDialog'
 import { DependenciesSection } from './DependenciesSection'
 import { FlowVisualization } from './FlowVisualization'
+import { TimeRollupPanel } from './TimeRollupPanel'
+import { Calculator } from 'lucide-react'
 import {
   ROUTING_TEMPLATE_DEFAULT_VALUES,
   buildRoutingTemplateFormFields,
@@ -51,7 +53,19 @@ export type RoutingTabProps = {
   extension: RoutingTabExtension
 }
 
-export default function RoutingTab({ productId, extension: _extension }: RoutingTabProps) {
+// Narrow the string-typed `extension.configurationType` to the known
+// set at the TimeRollupPanel boundary. Upstream's
+// ProductManufacturingExtension still types the field as a plain
+// string (to stay additive over future values) but the panel's mode
+// branching requires a closed set — anything unknown defaults to
+// `none`, which produces a safe no-op Calculate button instead of a
+// rendering gap.
+function narrowConfigurationType(raw: string): 'none' | 'variant_based' | 'rule_based' {
+  if (raw === 'variant_based' || raw === 'rule_based') return raw
+  return 'none'
+}
+
+export default function RoutingTab({ productId, extension }: RoutingTabProps) {
   const t = useT()
   const queryClient = useQueryClient()
   const { confirm, ConfirmDialogElement } = useConfirmDialog()
@@ -66,6 +80,11 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
     | { mode: 'edit'; operation: OperationRow }
     | null
   >(null)
+  // Time-rollup dialog — keyed per open so TimeRollupPanel remounts
+  // fresh every time the user clicks the button. Mirrors the
+  // explosion-dialog pattern on BomTab.
+  const [rollupDialogOpen, setRollupDialogOpen] = React.useState(false)
+  const [rollupDialogKey, setRollupDialogKey] = React.useState(0)
 
   const {
     options: templates,
@@ -190,6 +209,23 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
               <Plus className="size-4" />
               {t('routing.tab.addRouting', 'Add routing')}
             </Button>
+            {selectedId ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  // Bump the key so TimeRollupPanel remounts with a
+                  // clean slate — wipes any lingering result / picked
+                  // variant / ConfigurationForm draft from a previous
+                  // calculation.
+                  setRollupDialogKey((n) => n + 1)
+                  setRollupDialogOpen(true)
+                }}
+              >
+                <Calculator className="size-4" />
+                {t('routing.tab.calculateTime', 'Calculate time')}
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -219,6 +255,25 @@ export default function RoutingTab({ productId, extension: _extension }: Routing
           onOpenChange={setCreateDialogOpen}
           onSubmit={handleCreateRoutingTemplate}
         />
+
+        {selectedId ? (
+          <Dialog
+            open={rollupDialogOpen}
+            onOpenChange={(next) => setRollupDialogOpen(next)}
+          >
+            <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{t('routing.rollup.sectionTitle', 'Time rollup')}</DialogTitle>
+              </DialogHeader>
+              <TimeRollupPanel
+                key={rollupDialogKey}
+                routingTemplateId={selectedId}
+                masterProductId={productId}
+                configurationType={narrowConfigurationType(extension.configurationType)}
+              />
+            </DialogContent>
+          </Dialog>
+        ) : null}
 
         {selectedId && operationDialogState ? (
           <OperationDialog

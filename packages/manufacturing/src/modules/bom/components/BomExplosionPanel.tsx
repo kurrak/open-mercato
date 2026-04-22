@@ -19,6 +19,7 @@ import { useConfigAttributeKeys } from '../../configurator/components/useConfigA
 import { VariantPicker } from '../../product_master/components/VariantPicker'
 import { useCatalogLookup } from '../hooks/useCatalogLookup'
 import { useUomLookup } from '../hooks/useUomLookup'
+import { coerceSnapshotToStrings } from '../../../lib/variant-condition'
 import type { BomTabExtension } from './BomTab'
 
 // ---------------------------------------------------------------------------
@@ -68,22 +69,6 @@ type Mode = 'none' | 'variant_based' | 'rule_based'
 
 const POLL_INTERVAL_MS = 400
 const POLL_TIMEOUT_MS = 30_000
-
-// Coerce a raw ConfigurationForm snapshot value into the string shape the
-// configurator resolve endpoint expects. Spec d: boolean → 'true'/'false',
-// number → decimal string, string → unchanged, anything else → empty (skip).
-function coerceSnapshotToStrings(raw: Record<string, unknown>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [key, value] of Object.entries(raw)) {
-    if (value == null) continue
-    if (typeof value === 'string') {
-      if (value.length > 0) out[key] = value
-    } else if (typeof value === 'boolean' || typeof value === 'number') {
-      out[key] = String(value)
-    }
-  }
-  return out
-}
 
 export function BomExplosionPanel({ productId, bomHeaderId, extension }: BomExplosionPanelProps) {
   const t = useT()

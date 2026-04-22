@@ -16,6 +16,31 @@
  * The matcher is therefore scalar-in-array inclusion (and scalar-not-in-array
  * for negation).
  */
+/**
+ * Coerce a raw ConfigurationForm / configurator snapshot into the
+ * `Record<string, string>` shape expected by the configurator resolve
+ * endpoint, `/time-rollup`'s `variantConditions`, and any other
+ * downstream that matches against persisted `variant_condition` JSONB
+ * via `matchVariantCondition`. Scalars stringify; null / undefined /
+ * empty-string / non-scalar values drop silently.
+ *
+ * Shared by BOM's explosion panel and routing's time-rollup panel so a
+ * change to the coercion contract (e.g. adding array-valued
+ * ConfigAttribute types) fans out to both at once.
+ */
+export function coerceSnapshotToStrings(raw: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (value == null) continue
+    if (typeof value === 'string') {
+      if (value.length > 0) out[key] = value
+    } else if (typeof value === 'boolean' || typeof value === 'number') {
+      out[key] = String(value)
+    }
+  }
+  return out
+}
+
 export function matchVariantCondition(
   lineCondition: Record<string, unknown>,
   inputConditions: Record<string, string>,

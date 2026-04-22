@@ -19,7 +19,15 @@ export const metadata = {
 const requestSchema = z.object({
   routingTemplateId: z.string().uuid(),
   quantity: z.number().min(1),
+  // `variantConditions` drives OperationTemplateVariant matching for
+  // rule_based products (matched against the stored `variant_condition`
+  // JSONB via matchVariantCondition).
   variantConditions: z.record(z.string(), z.string()).optional().default({}),
+  // `variantId` drives matching for variant_based products (matched
+  // directly against OperationTemplateVariant.variant_id). Nullable so
+  // the client can pass it unset for `none` configuration type without
+  // splitting request shapes.
+  variantId: z.string().uuid().nullable().optional(),
 })
 
 export async function POST(req: Request) {
@@ -51,13 +59,22 @@ export async function POST(req: Request) {
       ? await findWithDecryption(em, OperationDependency, { predecessorOperation: { $in: operationIds }, organizationId: auth.orgId, tenantId: auth.tenantId, deletedAt: null }, {}, encScope)
       : []
 
-    // Build variant overrides map
+    // Build variant overrides map. An override fires when EITHER:
+    //   - its variant_id matches the request's variantId (variant_based
+    //     products), OR
+    //   - its variant_condition matches the request's variantConditions
+    //     snapshot (rule_based products).
+    // DB CHECK constraint guarantees exactly one of variant_id /
+    // variant_condition is set per override, so the two branches are
+    // mutually exclusive per row.
     const variantOverrides = new Map<string, VariantTimeOverride>()
     for (const v of variants) {
       const opId = extractRefId(v.operationTemplate)
 
       let matches = false
-      if (v.variantCondition && Object.keys(parsed.variantConditions).length > 0) {
+      if (v.variantId != null && parsed.variantId != null && v.variantId === parsed.variantId) {
+        matches = true
+      } else if (v.variantCondition && Object.keys(parsed.variantConditions).length > 0) {
         matches = matchVariantCondition(v.variantCondition as Record<string, unknown>, parsed.variantConditions)
       }
       if (matches) {
