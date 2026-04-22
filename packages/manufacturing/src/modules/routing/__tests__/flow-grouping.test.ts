@@ -1,10 +1,10 @@
-import { computeLevelGrouping, type FlowEdge, type FlowOperation } from '../lib/flow-grouping'
+import { computeLevelGrouping, type DependencyEdge, type FlowOperation } from '../lib/dependency-graph'
 
 function op(id: string, sequence: number): FlowOperation {
   return { id, sequence }
 }
 
-function dep(_id: string, pred: string, succ: string): FlowEdge {
+function dep(_id: string, pred: string, succ: string): DependencyEdge {
   return { predecessorId: pred, successorId: succ }
 }
 

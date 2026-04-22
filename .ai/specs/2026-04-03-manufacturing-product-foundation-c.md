@@ -690,6 +690,10 @@ Because routing is recommended as the last tab to implement, this sub-spec owns 
 
 ## Changelog
 
+### 2026-04-22
+- **§6 Flow visualization — rendering delta**: the read-only flow renderer upgraded from the originally-approved "plain HTML/CSS, indented divs + CSS connectors" to a CSS Grid layout with an SVG bezier-connector overlay. Same scope (read-only, no graph library, no drag-to-edit), sharper convergence rendering — individual SVG paths from each predecessor card's right edge to each successor card's left edge replace the generic "one arrow per level" indentation. `<svg>` is part of the web platform, not a graph library, so the "no graph library" constraint in §6 is honored. Level-assignment algorithm (Kahn-BFS recording the longest-path level per op) is unchanged; cycle-stuck ops still surface in a separate amber warning. Connectors draw solid for `required` link strength and dashed for `optional`.
+- **§Data Models / DAG validation — shared primitive**: the flow-visualization level assignment lives in `lib/dependency-graph.ts` alongside `validateDag`, sharing a single `buildGraph(operationIds, edges)` helper. Cycle semantics stay consistent across the validator (used by `/validate-graph`) and the render surface.
+
 ### 2026-04-20
 - **Risks**: Added *Client-only DAG Enforcement* entry documenting that `routing.operation_dependency.create` validates same-routing only, not cycle-freeness. The UI pre-checks via `validateDag` (see `OperationDependencyDialog`) so the authoring path is protected; direct POST callers bypass that. Tracked as a server-hardening follow-up. Also tightened the mitigation copy on the neighbouring *DAG Validation on Concurrent Edits* risk — removed the incorrect claim that "DAG validation runs on every dependency save" and redirected to the new risk.
 

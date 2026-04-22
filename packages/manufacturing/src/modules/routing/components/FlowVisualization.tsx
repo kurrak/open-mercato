@@ -4,12 +4,12 @@ import * as React from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { LoadingMessage } from '@open-mercato/ui/backend/detail'
 import { Notice } from '@open-mercato/ui/primitives/Notice'
-import { useT } from '@open-mercato/shared/lib/i18n/context'
+import { useT, type TranslateFn } from '@open-mercato/shared/lib/i18n/context'
 import { NameWithCode } from '../../../lib/components'
 import { useOperationsForRouting, type OperationRow } from '../hooks/useOperationsForRouting'
 import { useOperationDependencies, type OperationDependencyRow } from '../hooks/useOperationDependencies'
 import { useWorkCenterLookup } from '../hooks/useWorkCenterLookup'
-import { computeLevelGrouping, type FlowEdge } from '../lib/flow-grouping'
+import { computeLevelGrouping, type DependencyEdge } from '../lib/dependency-graph'
 
 export type FlowVisualizationProps = {
   routingTemplateId: string
@@ -66,7 +66,7 @@ export function FlowVisualization({ routingTemplateId }: FlowVisualizationProps)
   const workCentersById = useWorkCenterLookup(workCenterIds)
 
   const grouping = React.useMemo(() => {
-    const edges: FlowEdge[] = dependencies.map((dep) => ({
+    const edges: DependencyEdge[] = dependencies.map((dep) => ({
       predecessorId: dep.predecessor_operation_id,
       successorId: dep.successor_operation_id,
     }))
@@ -122,7 +122,12 @@ export function FlowVisualization({ routingTemplateId }: FlowVisualizationProps)
     observer.observe(grid)
     for (const el of cardRefs.current.values()) observer.observe(el)
     return () => observer.disconnect()
-  }, [depFingerprint, operations, dependencies])
+    // `dependencies` is redundant with `depFingerprint` (derived from
+    // the same array). `operations` stays in the deps list because its
+    // identity changing is the signal to re-observe newly mounted /
+    // unmounted card refs — the ResizeObserver otherwise misses cards
+    // that appear after its initial observe loop.
+  }, [depFingerprint, operations])
 
   if (opsLoading || depsLoading) {
     return <LoadingMessage label={t('routing.flow.loading', 'Loading flow…')} />
@@ -156,94 +161,100 @@ export function FlowVisualization({ routingTemplateId }: FlowVisualizationProps)
         </Notice>
       ) : null}
 
-      <div className="overflow-x-auto rounded-md border bg-muted/10 p-4">
-        <div
-          ref={gridRef}
-          className="relative"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: `repeat(${levelsCount}, ${COLUMN_WIDTH}px)`,
-            gap: `${ROW_GAP}px ${COLUMN_GAP}px`,
-            alignItems: 'start',
-          }}
-        >
-          {/* Column headers — one per level, placed in implicit row 1 of
-              their column. Real op cards offset via gridRow: rowIndex+2. */}
-          {grouping.levels.map((_opsAtLevel, levelIndex) => (
-            <div
-              key={`header-${levelIndex}`}
-              style={{ gridColumn: levelIndex + 1, gridRow: 1 }}
-              className="text-xs uppercase tracking-wide text-muted-foreground"
-            >
-              {t('routing.flow.level.label', 'Level {n}').replace('{n}', String(levelIndex))}
-              {_opsAtLevel.length > 1 ? (
-                <span className="ml-2 text-muted-foreground/70">
-                  {t('routing.flow.level.parallel', '({n} parallel)').replace('{n}', String(_opsAtLevel.length))}
-                </span>
-              ) : null}
-            </div>
-          ))}
-
-          {grouping.levels.map((opsAtLevel, levelIndex) =>
-            opsAtLevel.map((entry, rowIndex) => (
-              <div
-                key={entry.operation.id}
-                ref={(el) => {
-                  if (el) cardRefs.current.set(entry.operation.id, el)
-                  else cardRefs.current.delete(entry.operation.id)
-                }}
-                style={{ gridColumn: levelIndex + 1, gridRow: rowIndex + 2 }}
-                className="relative z-10"
-              >
-                <OperationCard
-                  operation={entry.operation}
-                  workCenter={
-                    entry.operation.work_center_id
-                      ? workCentersById.get(entry.operation.work_center_id) ?? null
-                      : null
-                  }
-                  intent="default"
-                />
-              </div>
-            )),
-          )}
-
-          {/* SVG connector overlay — absolute-positioned to cover the
-              full scrollable grid area. pointer-events: none so cards
-              remain clickable underneath. aria-hidden because the
-              dependency list already surfaces the same info textually. */}
-          <svg
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
-            style={{ width: svgSize.w, height: svgSize.h, zIndex: 0 }}
+      {grouping.levels.length > 0 ? (
+        <div className="overflow-x-auto rounded-md border bg-muted/10 p-4">
+          <div
+            ref={gridRef}
+            className="relative"
+            data-testid="routing-flow-grid"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${levelsCount}, ${COLUMN_WIDTH}px)`,
+              gap: `${ROW_GAP}px ${COLUMN_GAP}px`,
+              alignItems: 'start',
+            }}
           >
-            <defs>
-              <marker
-                id="routing-flow-arrow"
-                viewBox="0 0 10 10"
-                refX="8"
-                refY="5"
-                markerWidth="6"
-                markerHeight="6"
-                orient="auto-start-reverse"
+            {/* Column headers — one per level, placed in implicit row 1 of
+                their column. Real op cards offset via gridRow: rowIndex+2. */}
+            {grouping.levels.map((opsAtLevel, levelIndex) => (
+              <div
+                key={`header-${levelIndex}`}
+                style={{ gridColumn: levelIndex + 1, gridRow: 1 }}
+                className="text-xs uppercase tracking-wide text-muted-foreground"
               >
-                <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
-              </marker>
-            </defs>
-            {connectors.map((line) => (
-              <path
-                key={line.id}
-                d={line.d}
-                fill="none"
-                className="stroke-muted-foreground"
-                strokeWidth={1.5}
-                strokeDasharray={line.strength === 'optional' ? '4 3' : undefined}
-                markerEnd="url(#routing-flow-arrow)"
-              />
+                {t('routing.flow.level.label', 'Level {n}', { n: levelIndex })}
+                {opsAtLevel.length > 1 ? (
+                  <span className="ml-2 text-muted-foreground/70">
+                    {t('routing.flow.level.parallel', '({n} parallel)', { n: opsAtLevel.length })}
+                  </span>
+                ) : null}
+              </div>
             ))}
-          </svg>
+
+            {grouping.levels.map((opsAtLevel, levelIndex) =>
+              opsAtLevel.map((entry, rowIndex) => (
+                <div
+                  key={entry.operation.id}
+                  ref={(el) => {
+                    if (el) cardRefs.current.set(entry.operation.id, el)
+                    else cardRefs.current.delete(entry.operation.id)
+                  }}
+                  data-testid={`routing-flow-card-${entry.operation.id}`}
+                  style={{ gridColumn: levelIndex + 1, gridRow: rowIndex + 2 }}
+                  className="relative z-10"
+                >
+                  <OperationCard
+                    operation={entry.operation}
+                    workCenter={
+                      entry.operation.work_center_id
+                        ? workCentersById.get(entry.operation.work_center_id) ?? null
+                        : null
+                    }
+                    intent="default"
+                  />
+                </div>
+              )),
+            )}
+
+            {/* SVG connector overlay — absolute-positioned to cover the
+                full scrollable grid area. pointer-events: none so cards
+                remain clickable underneath. aria-hidden because the
+                dependency list already surfaces the same info textually. */}
+            <svg
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+              style={{ width: svgSize.w, height: svgSize.h, zIndex: 0 }}
+            >
+              <defs>
+                <marker
+                  id="routing-flow-arrow"
+                  viewBox="0 0 10 10"
+                  refX="8"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
+                </marker>
+              </defs>
+              {connectors.map((line) => (
+                <path
+                  key={line.id}
+                  data-testid="routing-flow-connector"
+                  data-strength={line.strength}
+                  d={line.d}
+                  fill="none"
+                  className="stroke-muted-foreground"
+                  strokeWidth={1.5}
+                  strokeDasharray={line.strength === 'optional' ? '4 3' : undefined}
+                  markerEnd="url(#routing-flow-arrow)"
+                />
+              ))}
+            </svg>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {grouping.unreachable.length > 0 ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
@@ -253,12 +264,13 @@ export function FlowVisualization({ routingTemplateId }: FlowVisualizationProps)
           </div>
           <div className="flex flex-wrap gap-2">
             {grouping.unreachable.map((op) => (
-              <OperationCard
-                key={op.id}
-                operation={op}
-                workCenter={op.work_center_id ? workCentersById.get(op.work_center_id) ?? null : null}
-                intent="warning"
-              />
+              <div key={op.id} data-testid={`routing-flow-card-${op.id}`}>
+                <OperationCard
+                  operation={op}
+                  workCenter={op.work_center_id ? workCentersById.get(op.work_center_id) ?? null : null}
+                  intent="warning"
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -300,10 +312,10 @@ function OperationCard({ operation, workCenter, intent }: OperationCardProps) {
   )
 }
 
-function formatRunTime(value: string | null, t: (key: string, fallback: string) => string): string {
+function formatRunTime(value: string | null, t: TranslateFn): string {
   if (value == null) return t('routing.flow.runTimeMissing', 'run time not set')
   const num = Number(value)
   if (!Number.isFinite(num)) return value
   const formatted = num.toLocaleString(undefined, { maximumFractionDigits: 2 })
-  return t('routing.flow.runTime', '{n} min').replace('{n}', formatted)
+  return t('routing.flow.runTime', '{n} min', { n: formatted })
 }
