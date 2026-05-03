@@ -56,6 +56,10 @@ export const enabledModules: ModuleEntry[] = [
   { id: 'configurator', from: '@open-mercato/manufacturing' },
 ]
 
+if (enabledModules.some((entry) => entry.id === 'example')) {
+  enabledModules.push({ id: 'example_customers_sync', from: '@app' })
+}
+
 const enterpriseModulesEnabled = parseBooleanWithDefault(process.env.OM_ENABLE_ENTERPRISE_MODULES, false)
 const enterpriseSsoEnabled = parseBooleanWithDefault(process.env.OM_ENABLE_ENTERPRISE_MODULES_SSO, false)
 const enterpriseSecurityEnabled = parseBooleanWithDefault(process.env.OM_ENABLE_ENTERPRISE_MODULES_SECURITY, false)
