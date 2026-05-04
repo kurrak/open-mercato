@@ -1,5 +1,5 @@
 import { createQueue, type Queue } from '@open-mercato/queue'
-import { getRedisUrl } from '@open-mercato/shared/lib/redis/connection'
+import { getRedisUrlOrThrow } from '@open-mercato/shared/lib/redis/connection'
 
 export const BOM_EXPLODE_QUEUE = 'bom-explode'
 
@@ -25,7 +25,7 @@ export function getBomQueue(queueName: string): Queue<Record<string, unknown>> {
 
   const created = process.env.QUEUE_STRATEGY === 'async'
     ? createQueue<Record<string, unknown>>(queueName, 'async', {
-        connection: { url: getRedisUrl('QUEUE') },
+        connection: { url: getRedisUrlOrThrow('QUEUE') },
         concurrency: 2,
       })
     : createQueue<Record<string, unknown>>(queueName, 'local')
